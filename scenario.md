@@ -1,6 +1,6 @@
 # Scenario
 
-**This scenario is invented.** Northwind Payments does not exist. There are
+**This scenario is invented.** Kestrel Pay does not exist. There are
 no real merchants, no real money, and no real card data anywhere in this
 repository. The two services described below are stubs: they expose a health
 endpoint, a metrics endpoint, and a switch that makes them fail on purpose.
@@ -16,7 +16,7 @@ asserted.
 
 ## The business
 
-Northwind Payments authorises card payments for online merchants, then pays
+Kestrel Pay authorises card payments for online merchants, then pays
 those merchants what they are owed.
 
 Those are two different jobs with two different shapes, and they are handled
