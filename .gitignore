@@ -1,0 +1,39 @@
+# Terraform state — never commit (may contain secrets/real identifiers)
+*.tfstate
+*.tfstate.*
+
+# Terraform working dirs and plan output
+.terraform/
+*.tfplan
+
+# Variable files with real values — only *.tfvars.example is allowed
+*.tfvars
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Cluster credentials
+kubeconfig
+kubeconfig.*
+*.pem
+
+# Terraform overrides and CLI config
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# OS noise
+.DS_Store
+
+# .terraform.lock.hcl is intentionally NOT ignored — the dependency lock
+# file is meant to be committed so provider versions are reproducible.
+
+# Working apparatus — never published. The public reasoning record lives
+# in docs/decisions.md and docs/architecture.md instead.
+CLAUDE.md
+specs/
+project-structure.md
