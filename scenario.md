@@ -88,14 +88,15 @@ them. The same release mechanism cannot be correct for both, and a platform
 that applies one strategy uniformly has misread at least one of these two
 workloads.
 
-So the worker is delivered on a different principle. Rather than limiting how
-much of the traffic a new version sees, the platform limits *when* a new
-version is allowed to appear at all: one version of the worker exists at a
-time, a new version is only permitted to take over while no run is in
-flight, and a run that is already in progress is never overlapped by a
-second one. The safety property being enforced is that no two versions ever
-touch the same batch of payments — not that a bad version can be withdrawn
-quickly, because by then the payouts have already been made.
+So the worker has to be delivered against a different requirement. What it
+needs is not a way to limit how much traffic a new version sees, but a
+guarantee that no two versions ever process the same batch of payments. If
+that guarantee fails, a merchant is paid twice. Rolling back quickly is not a
+remedy, because by the time anyone knows to roll back, the payouts have
+already been made.
+
+Meeting that requirement is a harder problem than metering traffic, and it is
+the one this platform has to answer.
 
 Encoding that difference, and being explicit about what each choice costs, is
 what this repository is for.
