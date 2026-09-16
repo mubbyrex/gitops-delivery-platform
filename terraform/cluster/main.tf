@@ -85,3 +85,93 @@ module "vpc" {
     "kubernetes.io/role/internal-elb" = "1"
   }
 }
+
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "21.25.0"
+
+  name               = var.cluster_name
+  kubernetes_version = var.kubernetes_version
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  # The API server is reachable from the internet, narrowed to an explicit
+  # allowlist. A private-only endpoint is the right answer for a payments
+  # platform carrying real traffic; it also needs a bastion or a VPN to
+  # operate, and this platform exists to be inspected. The allowlist is the
+  # seam where that trade would be reversed.
+  #
+  # The module defaults the public endpoint to off and this list to the whole
+  # internet, so both are set here rather than left alone. Private access
+  # stays on as well, which keeps traffic from inside the network off the
+  # public path.
+  endpoint_public_access       = true
+  endpoint_public_access_cidrs = var.endpoint_allowed_cidrs
+  endpoint_private_access      = true
+
+  # Creates the OIDC provider that lets a pod assume an AWS role through its
+  # service account. On by default in this module version, set explicitly
+  # because everything that later reaches AWS from inside the cluster hangs
+  # off it, and a silent change of default would be expensive to diagnose.
+  enable_irsa = true
+
+  # Grants the identity that runs Terraform administrative access to the
+  # cluster. This defaults to off: without it the cluster comes up healthy
+  # and nobody can talk to it, which looks like a credentials problem and is
+  # not one.
+  enable_cluster_creator_admin_permissions = true
+
+  # This module turns off the cluster's own bootstrapping of default
+  # components, so nothing installs networking unless it is asked for here.
+  # Left unset, the cluster comes up and its nodes register and then sit at
+  # NotReady forever, because a node without a network plugin can never
+  # report ready. There is no warning and no failed resource; the node group
+  # simply never finishes creating.
+  #
+  # The networking plugin must exist before any node boots, which is what
+  # before_compute asks for. The other two can follow, and the DNS component
+  # has to, since it runs as ordinary pods that need a node to land on.
+  # Versions are pinned to literals and version tracking is switched off.
+  # Left alone this module resolves each addon to whatever is newest at the
+  # moment of the run, which means an unrelated apply months from now would
+  # quietly upgrade the network plugin underneath a running cluster, and two
+  # people applying this same commit would not get the same cluster. Neither
+  # belongs in a platform whose subject is release safety.
+  #
+  # Upgrading is therefore an edit here, made on purpose, rather than a side
+  # effect of applying something else.
+  addons = {
+    vpc-cni = {
+      before_compute = true
+      most_recent    = false
+      addon_version  = "v1.23.1-eksbuild.1"
+    }
+    kube-proxy = {
+      before_compute = true
+      most_recent    = false
+      addon_version  = "v1.35.3-eksbuild.29"
+    }
+    coredns = {
+      most_recent   = false
+      addon_version = "v1.14.3-eksbuild.22"
+    }
+  }
+
+  eks_managed_node_groups = {
+    default = {
+      ami_type       = "AL2023_x86_64_STANDARD"
+      instance_types = [var.node_instance_type]
+      capacity_type  = "ON_DEMAND"
+      subnet_ids     = module.vpc.private_subnets
+
+      # Nothing scales this group. The ceiling sits one above the desired
+      # count purely so a node group update can bring a replacement up
+      # before taking the old node away, rather than running a node short
+      # while it rolls.
+      min_size     = var.node_count
+      desired_size = var.node_count
+      max_size     = var.node_count + 1
+    }
+  }
+}

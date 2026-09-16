@@ -43,3 +43,36 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "kubernetes_version" {
+  description = "Kubernetes minor version for the cluster control plane. Held one release behind the newest available: current enough to be worth running, settled enough not to be the first to find a regression. Standard support for this version runs to March 2027, comfortably past the life of this platform."
+  type        = string
+  default     = "1.35"
+}
+
+variable "node_instance_type" {
+  description = "EC2 instance type for the node group. The default is the cheapest type that clears the pod-per-node ceiling the cluster networking plugin imposes, with room to spare for what runs here today. It is expected to need raising once a metrics stack is added, because that is where memory rather than pod count becomes the limit."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "node_count" {
+  description = "Number of nodes in the managed node group. Two rather than one so that workloads have somewhere to express anti-affinity and disruption budgets, neither of which means anything on a single node."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.node_count >= 2
+    error_message = "Two nodes is the minimum: a single node makes anti-affinity and disruption budgets meaningless."
+  }
+}
+
+variable "endpoint_allowed_cidrs" {
+  description = "CIDR blocks allowed to reach the public Kubernetes API endpoint. Deliberately has no default. The endpoint is public so that this platform can be inspected and run without a bastion, and the only thing standing between that decision and an API server open to the whole internet is this list, so it has to be stated rather than inherited. Narrow it to the operator's own address."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.endpoint_allowed_cidrs) > 0
+    error_message = "At least one CIDR block must be allowed, or the cluster API is unreachable."
+  }
+}
