@@ -297,3 +297,85 @@ same commit — bug fixes and deprecation warnings are exactly the kind of thing
 that shifts between patches. That is a real, if small, loss of the property
 being claimed, and it is the price of a constraint that survives contact with
 a machine that updates itself.
+
+---
+
+## The controller is installed by the provisioning tool, not by itself
+
+**Context.** Something has to create the component that everything else in the
+cluster is then managed by. That component cannot create itself, so the
+question is what does.
+
+**Decision.** The provisioning tool installs it, along with its namespace and
+the single resource that points it at this repository. Those three objects are
+the only things in the cluster that the provisioning tool owns. Everything
+else arrives by being committed.
+
+**Why.** The boundary is worth being able to see. Three objects created from
+outside, everything else created from source control, and no object with two
+owners. A resource claimed by both would be reconciled by both, and the
+symptom is a controller that oscillates between in-sync and out-of-sync
+permanently, which reads as a bug in something else entirely.
+
+**Rejected.** A bootstrap script that installs the controller and then hands
+it a definition of itself, so that it manages its own upgrades. It is
+appealing because it removes the last thing done from outside. It is also
+self-referential in the worst place: a bad change to the controller's own
+configuration can leave the thing that would repair it unable to start, and
+recovery then means going around it with the tooling it was supposed to
+replace. For a bootstrap component, ownership from outside is the safer side
+of that trade.
+
+**Accepted cost.** The controller cannot upgrade itself. Moving it to a new
+version is a change to the provisioning configuration and an apply from a
+workstation, not a commit. That is a genuine inconsistency in a platform whose
+whole argument is that changes arrive through commits, and it is the price of
+not making the component that fixes things depend on itself being healthy.
+
+---
+
+## Creating the first custom resource, when nothing yet defines its type
+
+**Context.** The resource that points the controller at this repository is of
+a type the controller itself defines. Until the controller is installed, the
+type does not exist. Both need to happen in one run, because a platform that
+takes two runs to stand up has a manual step in the middle of its bootstrap.
+
+**Decision.** The resource is delivered as a one-template chart, applied by the
+same tool that installs the controller, ordered explicitly behind it.
+
+**Why.** The obvious approach — declaring it as a Kubernetes resource in the
+provisioning configuration — cannot work here, and the reason is worth
+knowing. That method reads the type's definition from a live cluster while
+planning, so the type must already exist before a plan can even be produced.
+Declaring the dependency does not help: the obstacle is at planning time and
+dependencies only order the work of applying.
+
+Templating renders locally and asks the cluster nothing until it applies. That
+turns an impossible ordering into an expressible one: finish installing the
+controller, by which point the type is established, then apply the resource.
+
+**Rejected.** Adding the resource to the controller's own installation as an
+extra manifest. It works and needs no additional machinery. It was rejected
+because it erases the boundary this platform is trying to make visible — the
+resource stops being its own object with its own owner and becomes a field
+inside the controller's installation, so the count of externally-owned objects
+reads as two rather than three, and changing the resource means changing the
+controller's release.
+
+**Rejected.** A third-party plugin that applies manifests without consulting
+the cluster while planning. It has exactly the needed property. It was
+rejected on supply: the maintained option is pre-release, and the older one is
+the less active lineage. Putting an unvetted dependency in the bootstrap path
+is a poor trade for a problem already solvable with what is here.
+
+**Rejected.** Two separate runs, or narrowing the first run to a subset of
+resources. Both work and both make standing this up a procedure to remember
+rather than a command to run.
+
+**Accepted cost.** A chart exists whose only purpose is to carry one manifest,
+which is indirection that has to be explained to anyone reading the
+configuration — so the explanation lives in the template itself rather than
+only in this log. The ordering is also declared rather than derived, which
+means it is invisible to anything checking the configuration for correctness
+and would be easy to remove by accident while tidying.
