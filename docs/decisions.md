@@ -253,3 +253,47 @@ nothing here protects it beyond the operator's own care.
 That is an acceptable risk for one person and an unacceptable one for two.
 The moment a second operator appears, this decision is reversed and a backend
 becomes the first thing added.
+
+---
+
+## Providers are pinned exactly, Terraform itself only to a minor version
+
+**Context.** Everything here is pinned so that two people running the same
+commit get the same result. Applied literally that includes Terraform itself,
+which was originally pinned to an exact patch release.
+
+Eleven days later the tool updated itself by one patch version and every
+configuration refused to run. Nothing had changed about the infrastructure or
+the intent; the pin had simply gone stale.
+
+**Decision.** Provider versions stay exact. Terraform's own constraint allows
+patch releases and rejects minor and major ones.
+
+**Why.** The two are pinned for different reasons and it was a mistake to
+treat them the same. Provider versions decide what resources get created and
+how, so a difference there is a difference in the infrastructure, and exact
+pinning is what makes the output reproducible. Terraform's patch releases fix
+bugs in the tool and do not change what a configuration produces. Refusing
+them buys no reproducibility at all, and the price is that routine tool
+updates break the repository until someone edits it.
+
+A constraint that has to be edited on a schedule unrelated to the work stops
+being read as a decision and starts being read as an obstacle, and the usual
+response is to widen it in a hurry without thinking. Better to draw the line
+where it means something.
+
+**Rejected.** Keeping the exact patch pin and updating it each time. It is
+defensible for a team that ships a pinned toolchain to every machine, because
+then the constraint documents something real. Here there is no such
+mechanism, so the pin documents nothing and only interrupts.
+
+**Rejected.** Dropping the constraint entirely. A major version of Terraform
+can change language behaviour, and finding that out mid-apply on a cluster is
+worse than being told up front.
+
+**Accepted cost.** Two people on different patch releases can now get
+different tool behaviour, which in rare cases means different results from the
+same commit — bug fixes and deprecation warnings are exactly the kind of thing
+that shifts between patches. That is a real, if small, loss of the property
+being claimed, and it is the price of a constraint that survives contact with
+a machine that updates itself.

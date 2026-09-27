@@ -1,8 +1,10 @@
 terraform {
-  # Pinned to an exact version rather than a range. This platform is meant to
-  # be reproducible by anyone who clones it, and a range means two people can
-  # run the same commit and get different plans.
-  required_version = "1.16.1"
+  # Patch releases of Terraform itself are allowed; minor and major ones are
+  # not. What gets built is decided by the provider versions below, and those
+  # are exact. Terraform's own patch releases do not change the resources a
+  # configuration produces, so refusing them buys no reproducibility and
+  # costs an edit here every few weeks.
+  required_version = "~> 1.16"
 
   required_providers {
     aws = {

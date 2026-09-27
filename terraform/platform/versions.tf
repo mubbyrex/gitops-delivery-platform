@@ -1,7 +1,8 @@
 terraform {
-  # Pinned to an exact version rather than a range, for the same reason the
-  # cluster configuration is: a reader should be able to reproduce this.
-  required_version = "1.16.1"
+  # Patch releases allowed, minor and major not, for the same reason as in the
+  # cluster configuration: the provider versions decide what gets built and
+  # those stay exact.
+  required_version = "~> 1.16"
 
   required_providers {
     # Locates the existing cluster and supplies the token that the kubernetes
