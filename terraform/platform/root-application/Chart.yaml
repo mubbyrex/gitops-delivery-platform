@@ -1,0 +1,5 @@
+apiVersion: v2
+name: root-application
+description: Carries the single Application that hands the cluster over to the delivery controller.
+type: application
+version: 0.1.0

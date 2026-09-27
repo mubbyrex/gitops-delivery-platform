@@ -1,0 +1,49 @@
+{{- /*
+This chart exists for one reason: to get a custom resource created in the same
+run that installs the controller defining it.
+
+Terraform's Kubernetes provider cannot do it. Creating a custom resource
+through that provider requires reading the type's schema from a live cluster
+while planning, so the type has to exist before the plan is made — and here it
+does not exist until the release that defines it has been applied. Ordering
+with depends_on does not help, because the obstacle is at plan time and
+depends_on only affects apply.
+
+Helm renders templates locally and asks the cluster nothing until it applies.
+So the dependency becomes expressible: wait for the controller's release to
+finish, by which point the type is established, then apply this.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.namespace }}
+  finalizers:
+    # Deleting this Application removes what it created rather than orphaning
+    # it. The finalizer is only processed while the controller is running, so
+    # this must be torn down before the controller is, which is the order the
+    # dependency between the two releases already produces.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: {{ .Values.path | quote }}
+
+  destination:
+    # The cluster the controller is running in, addressed from inside it.
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace }}
+
+  syncPolicy:
+    automated:
+      # Remove resources that disappear from the watched path, rather than
+      # leaving them behind with nothing declaring them.
+      prune: true
+      # Put back anything changed directly against the cluster. This is what
+      # makes the committed state authoritative instead of merely initial.
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
