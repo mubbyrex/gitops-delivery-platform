@@ -11,14 +11,28 @@ provider "aws" {
   # are invisible to it and have to carry the tag through their own
   # configuration.
   default_tags {
-    tags = merge(
-      {
-        Project     = var.project
-        Environment = var.environment
-      },
-      var.tags,
-    )
+    tags = local.common_tags
   }
+}
+
+locals {
+  # Defined once and used twice, because one mechanism does not cover
+  # everything. Default tags reach every resource this configuration creates
+  # directly. They do not reach instances launched later from a launch
+  # template, because the tags a template stamps on what it launches are data
+  # inside that template rather than tags on the template itself.
+  #
+  # So the same map is also handed to the cluster module, which puts it where
+  # the launch template can apply it. Missing that leaves the nodes - the
+  # second largest line on the bill - absent from any report grouped by
+  # project.
+  common_tags = merge(
+    {
+      Project     = var.project
+      Environment = var.environment
+    },
+    var.tags,
+  )
 }
 
 data "aws_availability_zones" "available" {
@@ -92,6 +106,11 @@ module "eks" {
 
   name               = var.cluster_name
   kubernetes_version = var.kubernetes_version
+
+  # Reaches the launch template's tag specification, and from there the
+  # instances, volumes and network interfaces it creates. Provider-level
+  # defaults cannot do this on their own.
+  tags = local.common_tags
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
