@@ -1,0 +1,42 @@
+# A local stand-in for the managed cluster, for work that does not need AWS.
+#
+# The Kubernetes version matches what the managed cluster runs, so manifests
+# that behave here have at least been seen by the same API server version.
+#
+# Images are pinned by digest rather than by tag. Tags for these images are
+# republished, so two people pulling the same tag weeks apart can get different
+# builds. A digest is the only reference that means one specific image.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kestrel-pay-local
+
+nodes:
+  # One control plane, which also carries the ingress label and the host port
+  # mappings. Traffic to localhost:80 and :443 lands on this node, which is how
+  # anything serving HTTP inside the cluster becomes reachable from a browser
+  # without a load balancer.
+  - role: control-plane
+    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          # A map, not a list: kind still emits kubeadm's v1beta3 schema here,
+          # and v1beta4's list form is rejected by it.
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  # Two workers rather than one, for the same reason the managed cluster has
+  # two nodes: anti-affinity and disruption budgets are meaningless where there
+  # is only one place to run.
+  - role: worker
+    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+  - role: worker
+    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0

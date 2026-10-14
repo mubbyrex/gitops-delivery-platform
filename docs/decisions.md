@@ -20,6 +20,48 @@ nothing was not a decision; it was a default that nobody examined.
 
 ---
 
+## Two configurations applied in order, not one
+
+**Context.** The platform is built in two steps: AWS infrastructure first, then
+the delivery controller installed onto the cluster that step produced. Those
+could be one configuration applied once, or two applied in order.
+
+One configuration is tempting because it is a single command. The obstacle is
+that the tooling has to be told how to reach the cluster before it knows the
+cluster will exist. Connection settings are read before anything is created,
+so the first run has nothing to point at. The usual way out is to narrow the
+first run to a subset of resources, then run it again unrestricted.
+
+**Decision.** Two configurations, applied in order, with separate state. They
+share one value: the cluster's name.
+
+**Why.** The split removes the ordering problem rather than working around it.
+By the time the second configuration runs, the cluster exists and can be
+looked up like any other resource.
+
+More importantly, the boundary between them is the same boundary that matters
+everywhere else in this platform. The first owns AWS. The second owns the
+handover to the delivery controller, and nothing beyond it. Someone reading
+the directory listing can see where that line falls before reading any code,
+which is worth more than saving a command.
+
+**Rejected.** A single configuration with the first run narrowed to a subset.
+It works, and plenty of projects do it. It was rejected because narrowing a
+run is a debugging tool, and making it a required step teaches anyone copying
+the pattern that this is normal. It also has to be explained every time
+somebody new stands the platform up, and a step that must be explained is a
+step that will eventually be skipped.
+
+**Accepted cost.** Two applies and two destroys, in opposite orders, where
+there could have been one of each. Anyone running this has to know the order
+and get it right — the second configuration fails confusingly if the first has
+not run, and a teardown in the wrong order strands objects inside a cluster
+that is being deleted underneath them. That knowledge now lives in the
+lifecycle scripts, which is a mitigation rather than a cure: the ordering is
+still real, and anyone bypassing the scripts has to know it.
+
+---
+
 ## One NAT gateway for the whole network, not one per zone
 
 **Context.** Nodes run in private subnets, which means they have no route to
