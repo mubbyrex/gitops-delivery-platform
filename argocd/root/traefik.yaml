@@ -1,0 +1,76 @@
+# The ingress controller.
+#
+# Wave zero, so the routing type definitions in wave minus one are already in
+# place when this starts. Without that ordering the provider below would come
+# up looking for types that do not yet exist.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    # A literal, and deliberately not the newest. The release published the
+    # same day this was pinned is a major version whose own notes describe
+    # breaking changes; this one carries the identical controller and has had
+    # a week in the wild.
+    targetRevision: 41.7.1
+
+    helm:
+      # Values live here rather than in environments/ because this component
+      # is not per-environment: one controller serves every namespace in the
+      # cluster. Nothing below differs between environments, which is the test
+      # for whether a value belongs in an environment file.
+      values: |
+        providers:
+          # The portable routing API, which is the reason this controller was
+          # chosen. Off by default in the chart.
+          kubernetesGateway:
+            enabled: true
+          # The older object type is left off. Supporting both would mean two
+          # ways to express the same routing, and the one being retired is not
+          # the one to keep.
+          kubernetesIngress:
+            enabled: false
+
+        service:
+          type: LoadBalancer
+          annotations:
+            # The balancer is created by the cloud controller on this service's
+            # behalf, so it inherits nothing from the tool that built the
+            # cluster. Without this line it is untagged, and untagged spend is
+            # spend that no cost report will ever attribute.
+            service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: "Project=kestrel-pay-platform,Environment=dev"
+
+        # Two small nodes with a pod ceiling do not have room to spare. One
+        # replica is honest for a platform that is torn down nightly; a real
+        # deployment would run more and say why.
+        deployment:
+          replicas: 1
+
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 192Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

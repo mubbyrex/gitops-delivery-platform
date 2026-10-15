@@ -1,0 +1,48 @@
+# The portable routing definitions.
+#
+# These are types, not instances. Traefik consumes them and a later phase uses
+# them to shift traffic between two versions of a service, so they have to
+# exist before anything that references them — which is what the wave below is
+# for. A negative wave is applied and allowed to settle before wave zero
+# starts, so the controller that reads these types never races the types
+# themselves.
+#
+# Referenced from upstream at a fixed tag rather than copied in. Copying would
+# mean carrying a few thousand lines of definitions and keeping them in step
+# with a project that already publishes them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-api
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kubernetes-sigs/gateway-api.git
+    # Pinned to a release, not a branch. The release after this one is a
+    # candidate rather than final, and pre-release type definitions are not
+    # something to run underneath a routing layer.
+    targetRevision: v1.6.3
+    # The standard channel. Checked that weighted routing lives here, so the
+    # experimental channel buys nothing and would mean running definitions
+    # that are still changing.
+    path: config/crd/standard
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # These definitions are large enough that the usual record of the last
+      # applied state does not fit in the annotation that normally holds it.
+      - ServerSideApply=true
