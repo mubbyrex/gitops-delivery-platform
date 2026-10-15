@@ -1,0 +1,13 @@
+{{- /*
+The namespace is created by this chart rather than by the delivery controller
+on the side. Doing it here means the namespace and the limits that bound it
+arrive together and are visible in the same place; letting the controller
+create it implicitly would produce a namespace with no ceiling at all.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ required "an environment must have a name" .Values.name }}
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    environment: {{ .Values.name }}

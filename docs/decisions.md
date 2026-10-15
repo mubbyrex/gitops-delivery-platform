@@ -421,3 +421,49 @@ configuration — so the explanation lives in the template itself rather than
 only in this log. The ordering is also declared rather than derived, which
 means it is invisible to anything checking the configuration for correctness
 and would be easy to remove by accident while tidying.
+
+---
+
+## Environments are namespaces in one cluster, not clusters of their own
+
+**Context.** Environments have to be separated somehow. The options are
+namespaces inside one cluster, a cluster each, or an account each. The usual
+reason given for choosing namespaces is cost, and in this case that reason
+does not survive contact with the numbers.
+
+A second cluster costs about a pound and a half per working session. This
+platform is torn down between sessions, so the monthly figure everyone quotes
+is a figure nobody pays. Cost is not what decides this.
+
+**Decision.** Environments are namespaces within a single cluster. Everything
+below the namespace — the Kubernetes version, the node pool, the custom
+resource definitions, the admission chain, the ingress controller — is shared.
+
+**Why.** Complexity, and specifically where it would land. A delivery
+controller managing clusters other than its own needs credentials for them.
+The mechanism by which secrets reach this platform is being built in the same
+stretch of work; making it a prerequisite for reaching the other environments
+at all would stack an unsolved problem on top of another unsolved problem.
+Each additional cluster also adds a teardown of thirteen to twenty-seven
+minutes and another thing for the lifecycle scripts to know about.
+
+**Rejected: a cluster per environment.** Better isolation in every respect,
+and not rejected on money. Rejected because the complexity it adds lands
+precisely where this stage is weakest.
+
+**Rejected: an account per environment.** This is the right answer for a
+company actually moving money, and it is the only one of the three that is a
+security boundary rather than an organisational one. It is out of reach for a
+platform run by one person, and it is named here rather than left unmentioned
+so that the chosen option is not mistaken for the correct one.
+
+**Accepted cost.** A Kubernetes version upgrade cannot be tested in one
+environment before another, because there is only one control plane. For a
+platform whose subject is release safety, that is a real concession and not a
+comfortable one. A bad cluster-wide object — a custom resource definition, an
+admission webhook — reaches every environment at once.
+
+And a namespace is not a security boundary. It separates names and applies
+quotas; it does not stop a workload determined to reach another. Two
+namespaces named after environments do not isolate those environments, and
+reading this as though they do would be a mistake the names actively invite.

@@ -1,0 +1,17 @@
+{{- /*
+What this environment may consume in total. Environments here are namespaces
+in a shared cluster, so this is the only thing standing between one
+environment and the whole node pool. It is a ceiling rather than an
+isolation boundary, and the difference matters: it limits an accident, not
+an adversary.
+*/}}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Values.name }}-quota
+  namespace: {{ .Values.name }}
+spec:
+  hard:
+    pods: {{ .Values.quota.pods | quote }}
+    requests.cpu: {{ .Values.quota.cpu | quote }}
+    requests.memory: {{ .Values.quota.memory | quote }}

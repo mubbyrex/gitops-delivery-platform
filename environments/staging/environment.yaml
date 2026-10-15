@@ -1,0 +1,22 @@
+# staging — where things are checked before they would matter.
+#
+# Tighter than dev on purpose. Staging is meant to resemble what comes after
+# it, and a staging environment with more headroom than production teaches
+# the wrong lesson: something that fits here would then fail where it counts.
+#
+# The ceilings are sized against what this cluster can actually hold. Two
+# small nodes carry roughly twenty-two pods between them; the delivery
+# controller takes seven and the shared platform components take a handful
+# more, which leaves about ten for the environments to divide.
+name: staging
+
+quota:
+  pods: "4"
+  cpu: "1"
+  memory: 1Gi
+
+container:
+  defaultRequestCpu: 50m
+  defaultRequestMemory: 64Mi
+  defaultLimitCpu: 250m
+  defaultLimitMemory: 192Mi

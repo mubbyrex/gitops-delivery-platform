@@ -1,0 +1,24 @@
+# Defaults only. Every environment overrides these in environments/<env>/.
+# Nothing here should be environment-specific: if a value is right for one
+# environment and wrong for another, it belongs in the values file, not here.
+
+# The namespace this environment lives in.
+name: ""
+
+# Ceilings, not reservations. Nothing is set aside by declaring these; they
+# cap what the environment can take if something misbehaves. That cap is the
+# one real thing a namespace gives you, so it is worth setting deliberately
+# rather than leaving open.
+quota:
+  pods: "4"
+  cpu: "1"
+  memory: 1Gi
+
+# Applied to any container that does not ask for anything. Without these a
+# container with no request can be scheduled anywhere and then starve its
+# neighbours, which is the failure a shared node pool makes possible.
+container:
+  defaultRequestCpu: 50m
+  defaultRequestMemory: 64Mi
+  defaultLimitCpu: 500m
+  defaultLimitMemory: 256Mi

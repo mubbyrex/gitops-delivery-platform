@@ -1,0 +1,17 @@
+# dev — where things are tried.
+#
+# Deliberately the larger of the two. Experiments need room, and a failure
+# here costs nothing. The ceiling exists so that an experiment which runs
+# away cannot take the whole node pool with it.
+name: dev
+
+quota:
+  pods: "6"
+  cpu: "2"
+  memory: 2Gi
+
+container:
+  defaultRequestCpu: 50m
+  defaultRequestMemory: 64Mi
+  defaultLimitCpu: 500m
+  defaultLimitMemory: 256Mi

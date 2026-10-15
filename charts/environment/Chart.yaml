@@ -1,0 +1,5 @@
+apiVersion: v2
+name: environment
+description: One environment, expressed as a namespace and bounds on what it may consume.
+type: application
+version: 0.1.0

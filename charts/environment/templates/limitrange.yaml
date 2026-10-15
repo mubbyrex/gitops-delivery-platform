@@ -1,0 +1,19 @@
+{{- /*
+Defaults for containers that declare nothing. A quota counts requests, so a
+container with no request counts as zero against it and the ceiling above
+stops meaning anything. These defaults are what make the quota enforceable.
+*/}}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Values.name }}-defaults
+  namespace: {{ .Values.name }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: {{ .Values.container.defaultRequestCpu }}
+        memory: {{ .Values.container.defaultRequestMemory }}
+      default:
+        cpu: {{ .Values.container.defaultLimitCpu }}
+        memory: {{ .Values.container.defaultLimitMemory }}
