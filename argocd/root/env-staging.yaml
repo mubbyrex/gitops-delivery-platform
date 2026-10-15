@@ -1,0 +1,52 @@
+# The staging environment.
+#
+# One file per component, and this is one component. Adding another means
+# adding a file here — nothing in the provisioning configuration changes, and
+# the three objects it owns stay three.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: env-staging
+  namespace: argocd
+  finalizers:
+    # Deleting this removes what it created rather than orphaning it. Only the
+    # controller can clear this, so it must still be running when this is
+    # deleted.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # Two sources for one chart. The chart does not contain its own environment
+  # values — those live in environments/ so that the chart stays identical
+  # everywhere — and a chart may not reference value files outside its own
+  # directory. The second source is this same repository, declared again under
+  # a name that value paths can be written against.
+  sources:
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      path: charts/environment
+      helm:
+        valueFiles:
+          - $values/environments/staging/environment.yaml
+
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+
+  syncPolicy:
+    automated:
+      # Remove what disappears from the repository rather than leaving it
+      # behind with nothing declaring it.
+      prune: true
+      # Put back what is changed directly against the cluster. This is what
+      # makes the committed state authoritative rather than merely initial.
+      selfHeal: true
+    syncOptions:
+      # The chart creates the namespace itself, together with the limits that
+      # bound it. Letting the controller create it separately would produce a
+      # namespace with no ceiling.
+      - CreateNamespace=false
