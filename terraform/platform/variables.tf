@@ -38,3 +38,33 @@ variable "root_path" {
   type        = string
   default     = "argocd/root"
 }
+
+variable "project" {
+  description = "Value of the Project tag applied to every AWS resource this configuration creates. Matches the cluster configuration's value, because the two sets of resources are reported on together and a cost report split across two spellings of the same project is not a cost report."
+  type        = string
+  default     = "kestrel-pay-platform"
+}
+
+variable "environment" {
+  description = "Value of the Environment tag applied to every AWS resource this configuration creates."
+  type        = string
+  default     = "dev"
+}
+
+variable "external_secrets_namespace" {
+  description = "Namespace the secrets operator runs in. Named here because the AWS-side binding is keyed on it, and it must match the namespace the delivery controller installs the operator into. The two are set independently and nothing checks that they agree, which is why both are literals rather than derived."
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "external_secrets_service_account" {
+  description = "Name of the secrets operator's service account. The other half of the key the AWS-side binding is written against. Set explicitly in the operator's chart values too, rather than left to the chart's naming template, so that a change to that template cannot silently break the binding."
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "secret_name_prefix" {
+  description = "Prefix every secret this platform reads is stored under. The operator's role is scoped to this prefix, so a secret belonging to something else in the same account is unreadable even though the operator holds a read permission. Changing it widens or narrows what the platform can see."
+  type        = string
+  default     = "kestrel-pay"
+}

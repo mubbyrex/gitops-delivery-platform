@@ -175,6 +175,23 @@ module "eks" {
       most_recent   = false
       addon_version = "v1.14.3-eksbuild.22"
     }
+
+    # Lets a pod assume an AWS role without the role being named anywhere
+    # inside the cluster. The binding is a record held in AWS that names this
+    # cluster, a namespace, and a service account; this agent is what the pod
+    # talks to in order to collect the credentials that record entitles it to.
+    #
+    # Without it the binding exists in AWS and simply has no effect, which
+    # presents as a permissions error in the pod rather than as anything
+    # pointing at a missing component.
+    #
+    # Pinned to the version the provider itself defaults to for this
+    # Kubernetes release, on the same reasoning as the three above: a newer
+    # build exists and being first to run it buys nothing here.
+    eks-pod-identity-agent = {
+      most_recent   = false
+      addon_version = "v1.3.10-eksbuild.3"
+    }
   }
 
   eks_managed_node_groups = {

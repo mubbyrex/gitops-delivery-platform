@@ -467,3 +467,214 @@ And a namespace is not a security boundary. It separates names and applies
 quotas; it does not stop a workload determined to reach another. Two
 namespaces named after environments do not isolate those environments, and
 reading this as though they do would be a mistake the names actively invite.
+
+---
+
+## Components are listed one file at a time, not generated from the tree
+
+**Context.** The resource that points the controller at this repository brings
+up further resources, one per component. Those can be written out as files, or
+produced from the directory layout by a generator the controller provides.
+
+**Decision.** One file per component, listed explicitly.
+
+**Why.** Count first. By the end of the planned work the inventory is about a
+dozen: two shared platform components, two environments, two services in each,
+a metrics stack, a rollout controller, and the analysis it reads. A generator
+earns its keep when adding the fiftieth of something is tedious, and that point
+is never reached here.
+
+At this size an explicit list is also the better answer to the question "what
+is deployed", because listing a directory answers it directly. With a generator
+you have to know the generator's rules and then work out what they currently
+match, which is a second thing that can be wrong: a component can fail to
+appear because a pattern did not match it, and a component that is silently
+absent is harder to notice than a file that is obviously missing.
+
+**Rejected: a generator over the directory layout.** Concise, and adding a
+component becomes free. Rejected for making the inventory invisible at exactly
+the scale where the inventory is small enough to read.
+
+**Accepted cost.** Repetition, and it compounds. Each component is a
+near-identical block differing in a name and a path, and the count grows with
+every service and every environment. The point at which this stops being
+acceptable is real and will arrive: a third environment roughly doubles the
+files, and that is the moment to revisit this rather than endure it.
+
+---
+
+## Traefik for ingress, and the portable routing API rather than its own
+
+**Context.** Something has to accept a request from outside the cluster. The
+familiar choice for years was the community NGINX ingress controller.
+
+**Decision.** Traefik, driven through the portable routing API rather than
+through the older ingress object or through Traefik's own resource types.
+
+**Why.** The familiar choice is gone. That project was retired in March 2026
+and is archived and unpatched, and the successor it designated was retired too.
+An unpatched component on the path every request takes is not a default to
+reach for out of habit.
+
+Traefik is actively maintained, implements the portable routing API, and is
+supported by the rollout controller a later stage of this platform needs for
+gradual traffic shifting — which is the real constraint. Choosing an ingress
+controller here that could not shift traffic by weight would mean replacing it
+later, and replacing the component every request passes through is not a change
+anyone wants to discover they have to make.
+
+The portable API rather than the older ingress object, because weighted routing
+is expressible in it directly instead of through vendor-specific annotations,
+and because the older object is the one being retired. Traefik's own resource
+types would work equally well today and would tie every routing definition in
+this repository to this one controller.
+
+**Rejected: an AWS-managed load balancer controller as the ingress layer.** It
+is the cloud provider's own recommendation and produces better balancers.
+Rejected at this point because it needs a workload identity binding of its own,
+which is the mechanism being built in the same stretch of work, and taking it
+here would mean building that mechanism twice or reordering everything around
+it. Recorded as the production answer and deferred.
+
+**Rejected: the newest chart release.** A major version was published the same
+day this was pinned, with breaking changes in its own release notes and a
+minimum Kubernetes version two minors higher. The version pinned here carries
+the identical controller and had a week in the wild.
+
+**Accepted cost.** The portable API's type definitions do not ship with the
+controller's chart — checked by unpacking it — so they come from a separate
+source that has to be applied first, which is one more thing in the bootstrap
+path and one more version to keep in step. The definitions are also referenced
+from the upstream project at a fixed tag rather than copied here, which means
+this platform depends on that repository staying reachable at that tag.
+
+And Traefik is less widely known than the thing it replaces. Anyone arriving at
+this repository expecting the familiar controller has something new to learn
+before they can read the routing.
+
+---
+
+## A load balancer created from inside the cluster is tagged by the request
+
+**Context.** Asking for an externally reachable service produces a load
+balancer in AWS. The provisioning tool never sees that resource, so the tag
+defaults set at the provider level cannot reach it. This is the first resource
+in this platform created by something running inside the cluster.
+
+**Decision.** The service carries an annotation listing the tags, and the cloud
+controller already present in a managed cluster applies them when it creates
+the balancer.
+
+**Why.** It is the only mechanism that exists for this. Verified against the
+controller's documentation rather than assumed, because the shape of the
+mistake was already familiar: the compute instances in this platform turned out
+untagged for the same reason, having been launched from a template whose tag
+block is data rather than resource configuration. A thing created on your
+behalf inherits nothing from the tool that asked for it, and the request has to
+carry the tags itself.
+
+Nothing extra needs installing. A service asking for a balancer is handled by
+the controller that ships with a managed cluster, and the subnet tags already
+in place are what it reads when deciding where to put it.
+
+**Rejected: installing the newer load balancer controller instead.** It is the
+cloud provider's recommendation, it produces network rather than classic
+balancers, and it is the better long-term answer. Deferred for the reason given
+in the entry above.
+
+**Accepted cost.** The tags are a string in a values file, matched by eye
+against the tags the provisioning tool applies elsewhere. Nothing checks that
+the two agree, and a typo produces a resource that is tagged, looks tagged, and
+is still missing from the cost report. The balancer is also billed by the hour
+whether or not anything is using it, and adds roughly thirteen percent to what
+this platform costs to run.
+
+---
+
+## The secrets operator's identity is held in AWS, not annotated in the cluster
+
+**Context.** An operator inside the cluster reads secrets out of AWS so that no
+secret value is ever committed. For that it needs AWS permissions, and the
+usual way to grant them is to annotate its service account with the identifier
+of a role it may assume.
+
+That identifier contains the AWS account number. The service account is an
+object inside the cluster, so the delivery controller owns it, so it has to be
+committed — and this repository is public and carries a rule that no account
+identifier appears in it anywhere. The two requirements are in direct conflict.
+
+**Decision.** The newer binding mechanism, where the association is a record
+held in AWS naming the cluster, a namespace and a service account name, and the
+role is named only on the AWS side. The service account carries no annotation.
+
+**Why.** Neither of the conflicting rules should give. That no account
+identifier is committed is what makes this repository publishable. That the
+controller applies everything inside the cluster is the point of this stage of
+the work.
+
+The AWS-side record resolves it without weakening either, because all three
+keys it is written against — a cluster name, a namespace, a service account
+name — are ordinary strings that disclose nothing. An account number on the AWS
+side is not a disclosure; it is the account you are already authenticated to.
+
+A second benefit was not the reason but is the larger one. The older mechanism
+names the cluster's identity provider in its trust policy, and that provider is
+regenerated with a new identifier every time the cluster is rebuilt — which is
+exactly how the hand-made binding earlier in this platform's life stopped
+working. The newer mechanism's trust policy names a fixed service principal, so
+there is nothing cluster-specific in it to go stale. The cluster-specific part
+moves into the association record, which the provisioning tool recreates from
+the cluster name it already holds. The binding survives a rebuild because the
+thing that used to go stale is no longer there, which is a better outcome than
+deriving it correctly.
+
+It also settles an ownership question rather than answering it. The service
+account was the one object straddling the line between what the provisioning
+tool owns and what the controller owns. With no annotation on it, the service
+account is wholly the controller's and the role and association are wholly the
+provisioning tool's. Nothing is half-owned.
+
+**Rejected: annotating the service account with the role identifier.** The
+standard answer and the one every tutorial shows. Rejected because it puts an
+account number in a public repository, and every way of hiding it is worse than
+the problem: having the provisioning tool patch a service account it does not
+own moves an ownership line this stage of the work promised not to move, and
+supplying the value from outside the repository means the cluster's contents are
+no longer decided by what is committed, which is the claim being made here.
+
+**Rejected: giving the operator a stored access key.** Would work in an
+afternoon, and is how this is done on clusters that are not on a cloud
+provider. Rejected because a credential able to fetch every secret would then be
+the one secret with nowhere to come from, bottoming the whole mechanism out in a
+key somebody places by hand and rotates by hand.
+
+**Rejected: a broad read permission over the account's secrets.** The role is
+scoped to a single name prefix, and listing secrets is absent from it
+altogether. The operator is told which secrets to fetch by what is committed, so
+it never needs to discover them, and a role that can enumerate an account's
+secrets tells an attacker what is worth going after even when it cannot read
+any of them.
+
+**Accepted cost, and there are three.**
+
+Portability. This mechanism belongs to one cloud provider's managed Kubernetes
+and has no equivalent elsewhere. The local cluster in this repository cannot
+reproduce it, which widens a gap between local and real that was already
+acknowledged.
+
+One identity for the whole cluster. The annotation-based mechanism lets the
+operator assume a different role per secret store, so one namespace's store can
+be scoped to that namespace's secrets. This one cannot — the operator's own
+documentation says so — so every store reads through the same role and the only
+scoping available is the name pattern in that role's policy. With two
+environments sharing a cluster whose boundary is already not a security
+boundary, that is consistent rather than worse. On a platform where
+environments were genuinely separated it would be the wrong shape. A workload
+needing its own AWS permissions gets its own association; it does not get them
+through the operator.
+
+Two more pods. The mechanism needs an agent on every node, and the node pool
+has a hard ceiling of eleven pods per node for networking reasons. Together
+with the operator's three deployments this takes the cluster from fourteen pods
+to nineteen of a possible twenty-two. The next component added is where that
+ceiling starts deciding things.

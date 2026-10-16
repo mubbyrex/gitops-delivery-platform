@@ -1,5 +1,16 @@
+# Until this phase, this configuration created no AWS resources at all and so
+# needed no tags. The secrets operator's identity is the first, which makes
+# this the point at which the tagging rule has to reach here too.
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = {
+      Project     = var.project
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 # The cluster is found by name through the AWS API, not by reading the other

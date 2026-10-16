@@ -1,0 +1,22 @@
+# Defaults only, and deliberately empty ones. A store with no region and no
+# secrets renders a store that reads nothing, which fails visibly rather than
+# reading from somewhere unintended.
+
+# Name the secrets below refer to. One store for the cluster.
+name: aws-secrets-manager
+
+# Region the secrets are held in. No default: the store would otherwise fall
+# back to a region nobody chose.
+region: ""
+
+# Every secret this platform reads lives under this prefix, and the operator's
+# AWS permission is scoped to exactly this prefix. The two are set in separate
+# places — here, and in the identity configuration — and must agree. They are
+# both literals rather than derived from one another because they sit on
+# opposite sides of the ownership boundary.
+secretPrefix: ""
+
+# What the cluster expects to exist. Each entry names a secret in AWS and the
+# Kubernetes secret it should appear as. No value ever appears here; that is
+# the property the whole mechanism exists to provide.
+secrets: []
