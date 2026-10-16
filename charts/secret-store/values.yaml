@@ -23,4 +23,7 @@ secretPrefix: ""
 # Each data entry takes a secretKey (the key inside the Kubernetes secret), a
 # remoteKey (the secret in AWS, below the prefix), and optionally a
 # remoteProperty naming one field of a secret that holds several.
+#
+# An entry may also set creationPolicy: Merge, for writing into a secret that
+# already exists and is owned by something else.
 secrets: []

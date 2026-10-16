@@ -678,3 +678,70 @@ has a hard ceiling of eleven pods per node for networking reasons. Together
 with the operator's three deployments this takes the cluster from fourteen pods
 to nineteen of a possible twenty-two. The next component added is where that
 ceiling starts deciding things.
+
+---
+
+## The controller's own password comes from AWS, merged into its existing secret
+
+**Context.** The delivery controller generates an admin password on first
+start and keeps it in a secret of its own. Because this platform is torn down
+between working sessions to stop paying for it, every resume is a first start,
+so the password was different every time and had to be read out of the cluster
+before anyone could log in.
+
+**Decision.** A bcrypt hash of a chosen password is held in AWS, and the
+secrets operator writes it into the controller's existing secret, merging two
+keys rather than owning the secret.
+
+**Why this secret and not an invented one.** Something had to demonstrate that
+secrets reach this cluster from AWS, and the obvious move is to invent a secret
+for the purpose. This one is a real problem the platform had already run into,
+which reads completely differently from a placeholder. Nothing was contrived to
+create the need.
+
+**Why merge rather than own.** The controller's secret also holds the key it
+signs sessions with and the certificate it serves with. Taking ownership would
+mean replacing those too — logging everyone out and breaking the serving
+certificate — so only the two password keys are written and every other key in
+that secret is left alone.
+
+There is a related finding worth recording because it changed the plan. The
+installation does not write the password key at all: with no password supplied,
+the rendered secret has no data section whatsoever, and the server fills in its
+own password, signing key and certificate on first start. So the installation
+and the operator are not fighting over the same key, which is what made merging
+safe. Had the chart written a password, the two would have overwritten each
+other on every apply.
+
+**Why a hash and not the password.** The controller only ever compares against
+a hash, so the password itself does not need to exist anywhere in this
+platform. It lives in the operator's password manager. The practical effect is
+that the operator's read permission — which covers every secret under this
+platform's prefix — cannot be used to recover the password, only the hash.
+
+**Rejected: supplying the hash as an installation value.** This was the plan of
+record and it does not work. That value is resolved by the provisioning tool
+when it installs the controller, which means the provisioning tool would have
+to read the secret from AWS and hold it in its state file. The secrets operator
+could never feed it, so the mechanism built for exactly this purpose would go
+unused on the one credential that most needed it.
+
+**Rejected: leaving the generated password and printing it at startup.** What
+the platform did before, and it works. Rejected because the password changing
+on every resume is the problem, and because a credential that has to be read
+out of the cluster before use cannot be given to anyone who does not already
+have cluster access.
+
+**Accepted cost.** Logging into the delivery controller now depends on an
+operator that the delivery controller itself deploys. If the operator is
+broken, the console you would use to investigate is the thing you cannot reach.
+It is a degradation rather than a lockout — every recovery step runs through
+`kubectl` and none needs the console — and that is the only reason the trade is
+acceptable. The recovery path is written down in `docs/runbook.md` rather than
+left to be worked out at the time, because a recovery path discovered under
+pressure is not a recovery path.
+
+A second cost, smaller and concrete: the password is stable across rebuilds,
+which is the point, and also means a password leaked once stays leaked until
+somebody rotates it. Previously a teardown rotated it by accident. Rotation is
+now a deliberate act, and the runbook has the procedure.
