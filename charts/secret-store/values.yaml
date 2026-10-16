@@ -19,4 +19,8 @@ secretPrefix: ""
 # What the cluster expects to exist. Each entry names a secret in AWS and the
 # Kubernetes secret it should appear as. No value ever appears here; that is
 # the property the whole mechanism exists to provide.
+#
+# Each data entry takes a secretKey (the key inside the Kubernetes secret), a
+# remoteKey (the secret in AWS, below the prefix), and optionally a
+# remoteProperty naming one field of a secret that holds several.
 secrets: []
