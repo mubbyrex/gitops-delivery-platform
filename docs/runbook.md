@@ -14,21 +14,26 @@ and rebuild. The password itself is not stored anywhere in this platform — onl
 the hash — because the controller never needs the password, only something to
 compare against. Keep the password in a password manager.
 
-Find the address and log in:
+The console is not reachable from outside the cluster. Its service is
+cluster-internal, and the only load balancer in this platform belongs to the
+ingress controller, which has no route to it. That is the installed default and
+it has not been changed: the console is an administrative interface, and
+nothing so far has needed it reachable from the internet.
 
-```bash
-kubectl -n argocd get svc argo-cd-argocd-server \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-
-argocd login <that address> --username admin --grpc-web
-```
-
-If the load balancer is not answering, reach the console without it:
+So it is reached through the API server:
 
 ```bash
 kubectl -n argocd port-forward svc/argo-cd-argocd-server 8080:443
-# then https://localhost:8080
+# then https://localhost:8080 — the certificate is self-signed, so expect a warning
+
+# or from the command line, in a second terminal
+argocd login localhost:8080 --username admin --insecure --grpc-web
 ```
+
+A consequence worth knowing: reaching the console requires cluster access
+already. Anyone who can get to it could have read the password out of the
+cluster anyway, which is part of why keeping the password out of Git matters
+more than keeping it out of the cluster.
 
 ---
 
