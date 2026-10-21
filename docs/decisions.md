@@ -745,3 +745,100 @@ A second cost, smaller and concrete: the password is stable across rebuilds,
 which is the point, and also means a password leaked once stays leaked until
 somebody rotates it. Previously a teardown rotated it by accident. Rotation is
 now a deliberate act, and the runbook has the procedure.
+
+---
+
+## Environment values live outside the chart, reached by declaring the repository twice
+
+**Context.** Every difference between environments is supposed to live in one
+directory per environment and nowhere else, which puts those values outside the
+chart that consumes them. The delivery controller resolves a chart's value files
+relative to the chart directory and refuses paths outside it, so the obvious
+reference does not work.
+
+**Decision.** Declare two sources on the same Application: the chart, and the
+same repository again, marked as a reference that value paths can be written
+against. Both point at this repository. The second exists only so the first can
+reach outside its own directory.
+
+**Why.** It is the supported route, and the alternatives both break something
+that matters more than the awkwardness. Moving the values into the chart
+collapses the separation the layout exists to create — the chart stops being
+identical across environments, and the claim that one environment resembles
+another stops being checkable. Copying the values into each Application puts
+environment differences in two places, which is the same failure wearing a
+different hat.
+
+**Rejected: values inside the chart, with environments selected by a flag.**
+Simpler to read and needs no second source. Rejected because it makes the chart
+environment-aware, and a chart that knows which environment it is in can drift
+between them in ways nothing detects.
+
+**Accepted cost.** It reads as indirection, because it is. Anyone meeting this
+for the first time sees a repository listed twice in one Application and has to
+be told why, so the explanation lives next to it rather than only here. It is
+also a mechanism specific to this controller rather than a general property of
+the templating tool, so the layout is not portable to a different delivery tool
+without rework.
+
+---
+
+## Custom resource types are schema-checked against the cluster, not a catalog
+
+**Context.** Every rendered manifest is supposed to pass schema validation
+before a change is considered done. For built-in Kubernetes types the schemas
+are published and the check is routine. Custom types are not built in, and
+their schemas have to come from somewhere.
+
+**Decision.** The offline validator checks everything it can against the
+published catalog of community-contributed schemas. The custom resource types
+are additionally checked by sending them to the cluster's own API server as a
+dry run, which validates them against the type definitions actually installed
+and applies nothing.
+
+**Why.** The catalog turned out to contain a schema the validator could not
+load. The error it reports — that no schema exists for the type — points at the
+wrong thing entirely, since the schema plainly exists and fetches fine. Narrowed
+down by bisection: one branch of that schema declares a boolean where a schema
+object belongs, which the validator rejects at load time and reports as absence.
+
+Rather than work around a defect in a transcription of the type definition, the
+check moved to the definition itself. The API server holds the authoritative
+schema for a type installed in that cluster, and a dry run is the same
+validation a real apply would perform. That is a stronger check than the one it
+replaces, not a weaker substitute for it.
+
+**Rejected: suppressing the missing-schema error.** One flag, and the whole
+class of check silently stops applying — including to types where it would have
+caught something.
+
+**Rejected: committing a corrected copy of the schema.** Fixes today's problem
+and creates a vendored file that must be kept in step with a project that
+publishes its own, which is the trade this platform refuses elsewhere.
+
+**Rejected: validating against an older version of the schema that does load.**
+Would pass, and would be checking the wrong contract. A check that passes
+against something other than what is deployed is worse than no check, because it
+reports confidence it has not earned.
+
+**Accepted cost.** Part of the validation now requires a running cluster, so it
+cannot all run offline or in a build that has no cluster access — and this
+platform deliberately gives its build pipeline no route to the cluster. So the
+custom-type check is something an operator runs, not something a pipeline
+enforces, and it can therefore be skipped by someone in a hurry. The offline
+half still runs anywhere and still covers every built-in type.
+
+**Postscript, five days later.** The catalog was fixed upstream. The same
+schema that could not be loaded now loads, and the offline validator passes on
+every type here without help. The specific problem this decision was made
+about lasted less than a week.
+
+That is worth leaving in rather than quietly deleting, because the conclusion
+survives the fix and is strengthened by it. A community-maintained
+transcription of a type definition is a moving target: it was wrong, it is now
+right, and nothing in this repository would have noticed either event. The
+cluster's own copy of the definition cannot drift from the definition the
+cluster enforces, because it is the same object. So the dry run stays — no
+longer as a workaround for a defect, but as the check that is authoritative
+about the thing being validated. The offline validator stays too, because it
+runs anywhere and catches the ordinary mistakes faster.
