@@ -1,0 +1,5 @@
+apiVersion: v2
+name: payments-api
+description: The stateless API — a long-running workload that scales by replica count.
+type: application
+version: 0.1.0

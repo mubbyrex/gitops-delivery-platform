@@ -1,0 +1,5 @@
+apiVersion: v2
+name: settlement-worker
+description: The batch worker — runs on a schedule, and never twice at once.
+type: application
+version: 0.1.0

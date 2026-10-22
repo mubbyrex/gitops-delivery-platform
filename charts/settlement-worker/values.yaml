@@ -1,0 +1,50 @@
+# Defaults only. Every environment overrides what it needs in
+# environments/<env>/settlement-worker.yaml.
+#
+# Note what is absent: there is no replica count anywhere in this file, and
+# there is not going to be one. For the other service in this platform a second
+# copy is capacity. For this one a second copy is the hazard — two runs over the
+# same batch is how a merchant gets paid twice — so the dial does not exist
+# rather than being set to one.
+
+schedule: "*/10 * * * *"
+
+image:
+  repository: ghcr.io/mubbyrex/gitops-delivery-platform/settlement-worker
+  # Content, not a tag. Same reasoning as the other chart.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+version: "dev"
+
+# How long a run takes, and how much it pretends to process. Configurable
+# because demonstrating that two runs cannot overlap requires a run that
+# outlasts the gap to the next one.
+run:
+  forSeconds: 30
+  itemCount: 30
+
+# The failure switch. A failed run exits non-zero, which is what the scheduler
+# and any later release gate actually react to.
+failure:
+  run: false
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 96Mi
+
+# How many finished runs to keep for inspection. Each kept run is a Pod object,
+# and Pod objects count against the namespace's pod quota even when finished,
+# so these numbers are a capacity decision as well as a retention one.
+history:
+  successful: 3
+  failed: 3
+
+# How long a run may take before the scheduler gives up on it. Set above the
+# expected duration with room to spare: too low and a slow run is killed and
+# counted as failed, which would make the failure signal mean two things.
+activeDeadlineSeconds: 600

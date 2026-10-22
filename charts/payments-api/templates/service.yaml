@@ -1,0 +1,19 @@
+{{- /*
+A stable address in front of however many copies are running. The other chart
+in this platform has no Service, because a scheduled job is not something
+anything connects to — which is one of the places the two shapes differ.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  labels:
+    app.kubernetes.io/name: payments-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payments-api
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http

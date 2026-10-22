@@ -1,0 +1,64 @@
+# Defaults only. Every environment overrides what it needs in
+# environments/<env>/payments-api.yaml, and nothing that differs between
+# environments belongs here.
+
+# How many copies serve traffic. This value existing at all is what makes this
+# service the shape it is: more copies means more capacity, and two versions
+# can serve side by side while traffic is shifted between them. The other
+# service in this platform has no equivalent, deliberately.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/mubbyrex/gitops-delivery-platform/payments-api
+  # Identified by content, never by a tag. A tag can be moved to different
+  # bytes later, which would mean the running version is not determined by what
+  # is committed. There is deliberately no tag field to fall back to: a
+  # reference carrying both is either ambiguous or silently ignores one.
+  #
+  # No default, so that a missing digest fails loudly at render rather than
+  # quietly running whatever was here last.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Written into the version label on build-info metrics, so that two versions
+# running at once are distinguishable while traffic is split between them.
+version: "dev"
+
+service:
+  port: 80
+  targetPort: 8080
+
+# The failure switch, in two halves because the halves fail differently.
+# Liveness failing means the process is broken and should be restarted.
+# Readiness failing means this copy is running but should not receive traffic.
+# Confusing the two is how a release that should degrade gracefully instead
+# takes out every copy at once.
+failure:
+  liveness: false
+  readiness: false
+
+# How long after start the service reports itself ready. Zero is honest for a
+# stub that has nothing to warm up; a non-zero value gives a rollout something
+# to wait for.
+readyAfterSeconds: 0
+
+# Small, because the node pool is shared and a stub that reserves what a real
+# service would reserve would crowd out the things this platform exists to
+# demonstrate.
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 96Mi
+
+probes:
+  liveness:
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 2
+    periodSeconds: 5
+    failureThreshold: 3

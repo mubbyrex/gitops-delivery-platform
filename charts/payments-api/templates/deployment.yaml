@@ -1,0 +1,112 @@
+{{- /*
+A Deployment, because this service is long-running and scales by replica count.
+That is the whole difference between this chart and the other one, and it is
+meant to be visible from the shape of the file rather than from a comment:
+there is a replica count here, a rolling update strategy, and two probes, and
+none of those make sense for a job that runs on a schedule.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  labels:
+    app.kubernetes.io/name: payments-api
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payments-api
+
+  {{- /*
+  Replace copies one at a time and never drop below the desired count. For a
+  single replica this still means the new copy must be ready before the old one
+  goes, which is the behaviour a later stage builds on when it shifts traffic
+  by weight rather than by replacement.
+  */}}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payments-api
+        app.kubernetes.io/version: {{ .Values.version | quote }}
+    spec:
+      {{- /*
+      Give the process time to finish what it is serving. The container stops
+      accepting new work on the signal and drains; without this the grace
+      period would expire and in-flight requests would be dropped on every
+      release, which would show up later as a release-safety problem that is
+      really an omission here.
+      */}}
+      terminationGracePeriodSeconds: 20
+
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: payments-api
+          image: "{{ .Values.image.repository }}@{{ required "an image digest is required: a tag would not pin the version" .Values.image.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+
+          env:
+            - name: VERSION
+              value: {{ .Values.version | quote }}
+            - name: LISTEN_ADDR
+              value: ":{{ .Values.service.targetPort }}"
+            - name: FAIL_LIVENESS
+              value: {{ .Values.failure.liveness | quote }}
+            - name: FAIL_READINESS
+              value: {{ .Values.failure.readiness | quote }}
+            - name: READY_AFTER
+              value: {{ .Values.readyAfterSeconds | quote }}
+
+          {{- /*
+          Two probes, two meanings, two consequences.
+
+          Liveness failing gets the container killed and restarted. It should
+          only fail when a restart is the thing that would help.
+
+          Readiness failing gets this copy removed from the service while it
+          keeps running. It should fail whenever the copy is alive but should
+          not be sent work.
+
+          Pointing both at the same endpoint is the common mistake, and it
+          turns "this copy is busy" into "restart every copy".
+          */}}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

@@ -1013,3 +1013,51 @@ Package visibility on this registry is also a property of the package and not
 inherited from the repository, and new packages default to private. So this is
 a setting that has to be applied deliberately and then confirmed by pulling
 without credentials, not assumed from the repository being public.
+
+---
+
+## The batch worker's non-overlap is one line of configuration, not a lock
+
+**Context.** The batch worker must never have two copies running at once. In
+the scenario this platform is built around, two runs over the same batch pay a
+merchant twice. That is not a performance concern to tune; it is the failure
+the delivery design exists to prevent.
+
+**Decision.** `concurrencyPolicy: Forbid` on the scheduled job. Nothing else.
+No lock, no leader election, no sentinel, no check at startup.
+
+**Why this is worth recording at all, being one line.** Because the obvious
+instinct is to write something. A distributed lock is the kind of code that
+looks like diligence and reads like competence, and it would be strictly worse
+than the setting it replaced. A lock has to handle the holder dying mid-run —
+the process killed, the node lost, the container evicted — and getting that
+wrong produces either a job that can never run again because a stale lock is
+held forever, or one that overlaps anyway because the lock expired early. The
+scheduler already handles all of it, because it is tracking the job rather than
+guessing from a flag.
+
+This is the clearest instance in this repository of the distinction the whole
+project rests on. The value added here is not code. It is knowing which of
+three settings is correct and why, and being able to say what the other two
+would cost.
+
+**Rejected: `Allow`.** The default, and the hazard expressed as a setting. Two
+runs proceed side by side.
+
+**Rejected: `Replace`.** Kills the running job and starts the new one. Sounds
+decisive and is worse than overlap here: a settlement run killed part-way
+leaves work half-done, and a platform that cannot say which items were handled
+is in a worse position than one that simply ran late.
+
+**Related settings, chosen for the same reason.** Retries are off, because a
+retry is a second attempt over the same batch. Late runs are not fired after
+their window, because a settlement run belongs to a window and yesterday's job
+executed this morning is a different job.
+
+**Accepted cost.** A run that is skipped is simply skipped. There is no queue,
+no catch-up, and nothing records that a window was missed beyond the absence of
+a run — so a worker that consistently overruns its schedule silently does half
+the work it should, and the only signal is one that nobody is looking at yet.
+Monitoring that is a later concern, and until then this trades a loud failure
+for a quiet one. That is the right trade when the loud failure is paying
+somebody twice, and it is still a cost.

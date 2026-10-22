@@ -1,0 +1,117 @@
+{{- /*
+A CronJob, because this service runs on a schedule and then stops. There is no
+replica count, no rolling update strategy, no readiness probe and no Service,
+and every one of those absences is deliberate rather than unfinished — none of
+them means anything for a job that is not serving traffic.
+
+The one line that matters most in this file is concurrencyPolicy, below.
+*/}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: settlement-worker
+  labels:
+    app.kubernetes.io/name: settlement-worker
+    app.kubernetes.io/managed-by: argocd
+spec:
+  schedule: {{ .Values.schedule | quote }}
+
+  {{- /*
+  THE POINT OF THIS CHART.
+
+  Forbid: if a run is still going when the next is due, the next one is skipped
+  rather than started alongside it. In the scenario this platform is built
+  around, two runs over the same batch pay a merchant twice, so overlap is not
+  a performance problem to tune — it is the failure the whole design exists to
+  prevent.
+
+  This is configured, not implemented. The scheduler already does it. A
+  hand-rolled lock here would be a worse version of something that already
+  works: it would have to handle the holder dying mid-run, and the scheduler
+  already does. Writing one would be the clearest possible example of adding
+  code on top of plumbing that is already there.
+
+  The alternatives, so the choice is legible:
+    Allow   — overlap permitted. The hazard, as a setting.
+    Replace — kill the running one and start the new one. Worse than overlap
+              here: a half-finished settlement run killed part-way through is
+              a state nothing in this platform knows how to reason about.
+    Forbid  — skip. A missed run is recoverable; a double run is not.
+  */}}
+  concurrencyPolicy: Forbid
+
+  {{- /*
+  If the scheduler was down when a run was due, do not fire it late. A
+  settlement run has a window it belongs to, and running yesterday's job this
+  morning is a different thing from running it on time.
+  */}}
+  startingDeadlineSeconds: 120
+
+  successfulJobsHistoryLimit: {{ .Values.history.successful }}
+  failedJobsHistoryLimit: {{ .Values.history.failed }}
+
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+
+      {{- /*
+      Do not retry a failed run automatically. A retry would start a second
+      attempt over the same batch, which is the thing this entire chart is
+      arranged to prevent — and a failure here is something a human should look
+      at rather than something to paper over.
+      */}}
+      backoffLimit: 0
+
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: settlement-worker
+            app.kubernetes.io/version: {{ .Values.version | quote }}
+        spec:
+          {{- /*
+          Never restart the container in place. Combined with backoffLimit
+          above, a failed run stays failed and visible.
+          */}}
+          restartPolicy: Never
+
+          {{- /*
+          Long enough for the process to notice the signal and stop cleanly
+          part-way through a run. It stops at the next item boundary rather
+          than being killed, which keeps "interrupted" distinguishable from
+          "crashed".
+          */}}
+          terminationGracePeriodSeconds: 30
+
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+
+          containers:
+            - name: settlement-worker
+              image: "{{ .Values.image.repository }}@{{ required "an image digest is required: a tag would not pin the version" .Values.image.digest }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+              ports:
+                - name: metrics
+                  containerPort: 8080
+
+              env:
+                - name: VERSION
+                  value: {{ .Values.version | quote }}
+                - name: RUN_FOR
+                  value: {{ .Values.run.forSeconds | quote }}
+                - name: ITEM_COUNT
+                  value: {{ .Values.run.itemCount | quote }}
+                - name: FAIL_RUN
+                  value: {{ .Values.failure.run | quote }}
+
+              resources:
+{{ toYaml .Values.resources | indent 16 }}
+
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
