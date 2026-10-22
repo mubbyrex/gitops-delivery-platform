@@ -15,7 +15,7 @@ image:
   # Written by the build pipeline, which commits it here and nowhere else.
   # Content-addressed: a tag could be repointed at different bytes, so what is
   # committed would stop determining what runs.
-  digest: sha256:1830d6090da069f1ea8b37276544d1096d16dab479506f4f92c9f471381ef27c  # built from 667cbaf0baeb
+  digest: sha256:52a518d16262c287939d9e6d23de2c455835a10d617c3d10b5575db3f195a763  # built from 7d0666684f8e
 
 # Both halves of the failure switch, off. Turning one on is a commit, which is
 # the point — breaking a service deliberately should be as visible and as
