@@ -14,7 +14,7 @@ image:
   # Not written by the pipeline. Promotion to staging is a human editing this
   # line, because promotion is a decision and decisions belong in the history
   # rather than happening automatically on every build.
-  digest: ""
+  digest: sha256:1830d6090da069f1ea8b37276544d1096d16dab479506f4f92c9f471381ef27c  # promoted from dev 2026-10-22
 
 failure:
   liveness: false

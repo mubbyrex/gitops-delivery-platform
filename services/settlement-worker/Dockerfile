@@ -47,9 +47,13 @@ FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7
 
 COPY --from=build /out/settlement-worker /settlement-worker
 
-# Already the default for this base image, and stated anyway so that a change
-# of base image cannot quietly promote this to root.
-USER nonroot:nonroot
+# Numeric, not the name "nonroot", and the distinction is not cosmetic.
+# Kubernetes can only enforce runAsNonRoot when it can see a numeric user id in
+# the image: given a name it cannot resolve, it refuses to start the container
+# rather than risk running as root. Writing the name here overrode the numeric
+# id this base image already declares and broke exactly the guarantee the line
+# was added to provide.
+USER 65532:65532
 
 EXPOSE 8080
 

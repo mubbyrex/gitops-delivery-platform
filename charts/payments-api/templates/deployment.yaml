@@ -48,6 +48,14 @@ spec:
 
       securityContext:
         runAsNonRoot: true
+        # Stated numerically here as well as in the image. runAsNonRoot can
+        # only be enforced against a numeric id, so without this the cluster
+        # depends on the image declaring one — and an image that declares a
+        # user by name fails to start with an error about verification rather
+        # than about the user.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
 

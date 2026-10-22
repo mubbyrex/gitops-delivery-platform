@@ -10,7 +10,7 @@ version: "staging"
 image:
   # Promotion is a human editing this line. See the note in this environment's
   # payments-api values.
-  digest: ""
+  digest: sha256:eb5a53dac319193a80193e396fea29e5a43895414e1f7ee3c4e6e9e3872e10b7  # promoted from dev 2026-10-22
 
 # A longer run than dev, because staging is where a run that overruns its
 # window is worth seeing before it matters.
