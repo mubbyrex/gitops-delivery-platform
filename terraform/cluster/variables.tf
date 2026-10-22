@@ -51,9 +51,9 @@ variable "kubernetes_version" {
 }
 
 variable "node_instance_type" {
-  description = "EC2 instance type for the node group. The default is the cheapest type that clears the pod-per-node ceiling the cluster networking plugin imposes, with room to spare for what runs here today. It is expected to need raising once a metrics stack is added, because that is where memory rather than pod count becomes the limit."
+  description = "EC2 instance type for the node group. Raised from the previous size once the platform components alone filled nineteen of the twenty-two pod slots two smaller nodes provide, leaving no room for the workloads this cluster exists to run. The binding constraint is addresses rather than processor or memory: the networking plugin assigns each pod an address from the node's own interfaces, so the instance type sets a hard pod ceiling well before anything else runs out. Raising the ceiling without raising the instance size is possible by assigning address blocks rather than single addresses, and was rejected for coupling node startup to subnet layout."
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "node_count" {

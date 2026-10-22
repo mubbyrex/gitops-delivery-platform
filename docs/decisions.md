@@ -842,3 +842,174 @@ cluster enforces, because it is the same object. So the dry run stays — no
 longer as a workaround for a defect, but as the check that is authoritative
 about the thing being validated. The offline validator stays too, because it
 runs anywhere and catches the ordinary mistakes faster.
+
+---
+
+## Nodes are made larger because the pod ceiling was reached, not because of what comes next
+
+**Context.** The cluster networking plugin caps how many pods a node can run by
+how many IP addresses the instance type can hold, and the type in use allows
+eleven. Two nodes, twenty-two slots, nineteen in use. Three free, with two
+services about to be added across two environments.
+
+**Decision.** Two nodes of the next size up — thirty-four slots.
+
+**Why, and why now rather than earlier.** Three free slots cannot hold two
+services in two environments, and one of those services is the one whose entire
+purpose is to scale by replica count. Sizing was correct when it was chosen and
+has been outgrown; that is the normal life of a sizing decision rather than a
+mistake being corrected.
+
+**Rejected: a third node of the current size.** Cheaper, and it looks like the
+obvious answer. Thirty-three slots against thirty-four for two thirds of the
+extra cost. Rejected because each node arrives already owing three pods — it
+runs its own networking agent, service proxy and identity agent — so the
+thirty-three is really twenty-five usable against the larger pair's
+thirty-four. Per usable slot it is the worse buy, and the arithmetic is only
+visible if you remember that per-node components scale with nodes.
+
+**Rejected: raising the address limit instead of the instance size.** The
+networking plugin can assign each interface a block of sixteen addresses rather
+than single addresses, which lifts the ceiling to around a hundred at no extra
+instance cost. This is the right answer for a cluster that is not a reference
+platform. Rejected on two grounds: the blocks have to be allocatable as
+contiguous ranges, so it couples node startup to subnet layout and fails at
+launch rather than at configuration; and lifting the ceiling also appears to
+require the limit be set in node startup configuration and the node group
+replaced, which puts a node replacement on the path of every capacity change.
+Recorded as the production answer and deferred.
+
+**Rejected: fewer replicas.** Would fit, and would make the horizontally
+scaling service a single instance, which removes the only thing that makes it
+the horizontally scaling service.
+
+**Accepted cost.** Running cost rises from about $0.22 to about $0.26 an hour,
+roughly nineteen percent, for capacity that is mostly idle on the day it is
+bought. The nodes are also replaced to apply it, so this is the first change in
+this platform's life that disrupts a running cluster rather than adding to it.
+
+A second cost, stated because it would be easy to pretend otherwise: memory
+rises too, and memory is expected to become the binding constraint once
+something scrapes metrics. That is convenient and it is **not** the
+justification. If the pod ceiling were not already reached, this change would
+be premature and the honest thing would be to wait.
+
+Measured after the change rather than predicted: allocatable memory per node
+went from 1.40 Gi to 3.22 Gi, a factor of 2.3 rather than the 2 the instance
+sizes imply. The difference is the amount each node reserves for itself, which
+is close to fixed and therefore a smaller fraction of a larger node. Small
+nodes lose proportionally more to overhead than their size suggests, which is
+an argument against solving capacity with more small nodes that is separate
+from the pod-slot arithmetic above.
+
+---
+
+## The pipeline's own commit must not start the pipeline
+
+**Context.** The build pipeline commits an image reference back to the
+repository it watches. A pipeline that commits to its own trigger can start
+itself, and a loop that costs money per iteration is a poor thing to discover
+by accident.
+
+**Decision.** Nothing is built. The automatically provided token already has
+this property: a push made with it does not create a new run. This was checked
+against the platform's documentation rather than assumed, and the documented
+exceptions are only the two manual trigger events, neither of which is used
+here.
+
+**Why it is worth an entry at all, given nothing was built.** Because the
+alternatives people reach for are all worse, and reaching for one of them would
+look like diligence. A commit-message convention that later gets edited; a path
+filter that silently stops matching when a file moves; or a personal access
+token — which would *reintroduce* the recursion the default token prevents,
+while also putting a long-lived credential in a repository whose premise is not
+holding those. Knowing the default is safe is what makes it possible to decline
+all three.
+
+**Decision, second half: which file the reference is written to.** The
+development environment's values file, and only that one. Promotion to the next
+environment is a human editing a file.
+
+**Why.** Promotion is a decision. If the pipeline wrote to every environment,
+every environment would receive every build, and the thing this platform exists
+to demonstrate — that a release is a deliberate, visible, reversible act —
+would be gone. A human editing one line is the smallest honest form of that.
+
+**Accepted cost.** Promotion is manual, so it can be forgotten, and the two
+environments will drift apart whenever someone does not get round to it. That
+drift is the intended shape rather than a defect, but it does mean the
+environments are not automatically comparable, and anyone reading one and
+assuming the other matches will be wrong.
+
+---
+
+## An image is identified by content, not by a name that can be repointed
+
+**Context.** A chart conventionally takes a repository and a tag and joins them
+with a colon. A tag can be moved to different content later, which means the
+cluster's contents would not be determined by what is committed.
+
+**Decision.** The values file carries the repository and a content digest, the
+template joins them with `@`, and there is no tag field at all.
+
+**Why the tag field is removed rather than left empty.** A reference can be
+built from a tag or from a digest and they use different separators, so a digest
+cannot simply be put in a tag field. Leaving the field present invites someone
+to set it, and a reference with both is either ambiguous or silently ignores
+one. Removing it makes the wrong thing impossible rather than merely
+discouraged.
+
+**Rejected: a tag per build, immutable by convention.** Registries can be
+configured to refuse overwriting a tag, which gets most of the benefit and
+stays readable. Rejected because it is a property of the registry's
+configuration rather than of the reference itself — the same committed string
+means something different depending on a setting held somewhere else, and that
+is precisely the kind of invisible dependency this platform spends its length
+removing.
+
+**Accepted cost.** A digest is unreadable. Nobody looking at an environment
+values file can tell which version is deployed, and a diff between two releases
+shows two meaningless strings. The pipeline writes a human-readable comment
+beside it, which helps and is not load-bearing — being a comment, it will
+eventually be wrong, and a comment that disagrees with the value beside it is
+worse than no comment.
+
+---
+
+## The image is published so that pulling it needs no credential
+
+**Context.** The cluster has to pull the images it runs. If the published
+package requires authentication, the cluster needs a pull credential, which is
+a secret.
+
+**Decision.** The package is published readable without authentication, and the
+cluster is given no pull credential.
+
+**Why, and the reason is a loop rather than convenience.** The mechanism for
+getting secrets into this cluster is an operator that runs as a container, so it
+has to be pulled before it can supply anything. A cluster that cannot pull
+without a secret cannot start the thing that provides the secret. It would work
+today, because that operator comes from a registry that needs no credential —
+but it is a dependency loop waiting for somebody to move an image, and the
+failure would present as a cluster that cannot start rather than as a missing
+credential.
+
+The source repository is public, so there is nothing disclosed by the package
+being public that is not already disclosed.
+
+**Rejected: a private package with a pull credential supplied by the secrets
+mechanism.** Closer to what a real company would do, and it would exercise the
+secrets mechanism a third time. Rejected for the loop above, and because the
+exercise would be circular: using the secrets mechanism to fetch the credential
+needed to start the secrets mechanism.
+
+**Accepted cost.** Anybody can pull these images and read what is in them.
+These are deliberately trivial stubs that compute nothing, so there is nothing
+inside to protect — but that is a property of this phase rather than a general
+one, and the first image here with anything real in it would make this the
+wrong choice. Worth re-deciding rather than inheriting.
+
+Package visibility on this registry is also a property of the package and not
+inherited from the repository, and new packages default to private. So this is
+a setting that has to be applied deliberately and then confirmed by pulling
+without credentials, not assumed from the repository being public.

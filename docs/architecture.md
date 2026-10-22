@@ -30,11 +30,10 @@ Inside the cluster, in the order the controller brings them up:
 | secret store and requests | which AWS secrets this platform expects to exist |
 | `dev`, `staging` | one namespace each, with ceilings on what they may consume |
 
-The drawing above shows the network and the ownership split. It has not been
-re-exported since the components in that table were added, so read the table
-for the current inventory and the drawing for the shape of the network.
-
-Solid outlines in the diagrams are built. Dashed outlines are planned.
+Solid outlines in the diagrams are built. Dashed outlines are planned. The
+colour says which system owns a resource: one for the provisioning tooling, one
+for the delivery controller, and one for the things owned by neither, which is
+the distinction the next section is about.
 
 ## The boundary that matters most
 
