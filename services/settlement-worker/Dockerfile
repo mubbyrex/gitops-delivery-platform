@@ -21,9 +21,22 @@ COPY main.go ./
 
 # Statically linked, because the runtime stage below has no C library to link
 # against. Trimmed paths so the binary does not record the build machine's
-# directory layout, and stripped so it carries no debug tables — both make the
-# output identical between two builds of the same source, which is what makes a
-# digest meaningful.
+# directory layout, and stripped so it carries no debug tables.
+#
+# Those two flags make the *binary* reproducible. They do not make the image
+# reproducible, and it is worth being precise about the difference because it
+# is easy to assume otherwise. Building this source twice produces two
+# different image digests: the image configuration carries a creation
+# timestamp and the layer archives carry file modification times, none of
+# which the compiler flags touch. Measured, not assumed — two builds of
+# identical source, two digests.
+#
+# The practical consequence: re-running the build for a service whose source
+# has not changed publishes a new digest and therefore redeploys identical
+# code. The pipeline avoids this in normal operation by only building services
+# whose files actually changed, so it bites on a manual re-run rather than on
+# ordinary pushes. Making the image itself reproducible needs the newer builder
+# with timestamp rewriting, which is a larger change than this phase needs.
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/settlement-worker .
 
 # No shell, no package manager, no utilities. Nothing to exploit and nothing to
