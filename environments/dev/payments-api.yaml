@@ -1,0 +1,27 @@
+# payments-api in dev.
+#
+# Everything that differs between environments is here and nothing else. The
+# chart is byte identical in both; if a value appears in both environment files
+# with the same content, it belongs in the chart's defaults instead.
+
+# Two copies, because one copy makes this indistinguishable from the batch
+# worker in shape. Two is also the minimum at which a rolling update means
+# anything and at which traffic can be split between versions later.
+replicaCount: 2
+
+version: "dev"
+
+image:
+  # Written by the build pipeline, which commits it here and nowhere else.
+  # Content-addressed: a tag could be repointed at different bytes, so what is
+  # committed would stop determining what runs.
+  digest: ""
+
+# Both halves of the failure switch, off. Turning one on is a commit, which is
+# the point — breaking a service deliberately should be as visible and as
+# reversible as any other change.
+failure:
+  liveness: false
+  readiness: false
+
+readyAfterSeconds: 0

@@ -22,7 +22,7 @@ image:
 
 # Written into the version label on build-info metrics, so that two versions
 # running at once are distinguishable while traffic is split between them.
-version: "dev"
+version: "unspecified"
 
 service:
   port: 80

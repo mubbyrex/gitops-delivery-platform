@@ -1,0 +1,51 @@
+# payments-api in staging.
+#
+# One file per component per environment. Four files for two services across
+# two environments is repetition, and it is the accepted cost of listing
+# components explicitly rather than generating them: reading this directory
+# tells you what the cluster runs, without having to work out what a generator
+# currently matches.
+#
+# Wave two, so the namespace this lands in — and the quota that bounds it —
+# already exist.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments-api-staging
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # The chart, and then this same repository declared again so that value paths
+  # can reach outside the chart directory. The chart holds no environment
+  # values deliberately; they are in the file referenced below and nowhere
+  # else.
+  sources:
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      path: charts/payments-api
+      helm:
+        valueFiles:
+          - $values/environments/staging/payments-api.yaml
+
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The namespace is owned by the environment component, which created it
+      # along with its quota. Creating it here would give one object two
+      # owners.
+      - CreateNamespace=false

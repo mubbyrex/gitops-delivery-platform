@@ -1061,3 +1061,50 @@ the work it should, and the only signal is one that nobody is looking at yet.
 Monitoring that is a later concern, and until then this trades a loud failure
 for a quiet one. That is the right trade when the loud failure is paying
 somebody twice, and it is still a cost.
+
+---
+
+## The image scan fails the build only on findings somebody can act on
+
+**Context.** The pipeline scans every image before publishing it. What it does
+when the scan finds something is a decision with a cost in both directions, and
+the default answers are both wrong.
+
+**Decision.** Fail the build on high and critical findings **that have a fix
+available**. Report and continue on everything else.
+
+**Why the qualifier is the whole decision.** A gate that fails on findings with
+no available fix cannot be satisfied by the person it blocks. There is nothing
+to upgrade and nothing to patch, so the only ways past it are to disable the
+gate, add an exception, or stop looking — and all three happen within about a
+week of the first unfixable finding. A gate that is routinely bypassed is worse
+than no gate, because the bypass becomes habit and then applies to the findings
+that did matter.
+
+Failing on fixable findings leaves an action attached to the failure: change a
+version, rebuild, move on.
+
+**Why the scan runs before publishing, not after.** The image is built and
+loaded locally, scanned, and only then pushed. Scanning after publishing means
+the thing being judged is already available to pull, and the gate is reduced to
+a notification.
+
+**Rejected: report everything, fail on nothing.** Honest about the limits of
+scanning and popular for that reason. Rejected because a report nobody is
+obliged to read is indistinguishable from not scanning, and this platform
+already has one component whose failure is silent.
+
+**Rejected: fail on everything, including unfixable findings.** Looks the most
+rigorous and is the most likely to be switched off.
+
+**Accepted cost, and it is a real one.** A vulnerability disclosed in a
+dependency breaks this pipeline for changes that have nothing to do with it.
+Someone pushing a one-line edit discovers that they now own a dependency
+upgrade. That is a genuine tax on unrelated work, and the alternative is
+shipping a known-fixable vulnerability because fixing it was inconvenient at
+the time.
+
+A second cost, quieter: the base image here is distroless and carries almost no
+operating system packages, so this gate currently has very little to find. It
+will look like it is working when it is mostly not being exercised, and the
+first time it fires will be the first time it is really tested.

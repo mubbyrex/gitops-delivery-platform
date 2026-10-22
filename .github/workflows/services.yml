@@ -1,0 +1,182 @@
+# Build, scan, publish, and commit a reference. That is the whole of what this
+# pipeline can do, and the limit is the point rather than an omission.
+#
+# It has no kubeconfig, no cluster role, and no cloud credentials. It cannot
+# reach the cluster, and nothing here could be extended to without someone
+# noticing, because the permissions below are written out one at a time with a
+# reason attached to each. The cluster's contents are decided by what is
+# committed to this repository; this pipeline's only influence over the cluster
+# is that it is allowed to make one kind of commit.
+#
+# The flow:
+#   source changes  ->  build  ->  scan  ->  publish  ->  commit the digest
+#   and then the delivery controller, which is watching this repository, does
+#   the rest. Nothing here tells the cluster anything.
+
+name: services
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'charts/payments-api/**'
+      - 'charts/settlement-worker/**'
+      - '.github/workflows/services.yml'
+  # Manual runs, for publishing the first image before any source has changed.
+  workflow_dispatch:
+
+# Deny everything by default, then grant per job. Without this line the default
+# grant applies, which is broader than anything here needs and would make the
+# per-job grants below decorative.
+permissions: {}
+
+concurrency:
+  # One run per branch. A second push while a run is in flight cancels the
+  # first, so two runs cannot race to commit a digest to the same file.
+  group: services-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      # Read the source to build it, and write the digest back when it is
+      # published. This is the only write access this pipeline has to anything,
+      # and it is scoped to this repository.
+      contents: write
+      # Publish the image. Grants nothing beyond the package registry — it
+      # cannot read repository secrets, reach the cluster, or touch the cloud
+      # account.
+      packages: write
+
+    strategy:
+      # Keep going if one service fails, so a problem with one is not reported
+      # as a problem with both.
+      fail-fast: false
+      matrix:
+        service: [payments-api, settlement-worker]
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two commits, so this run can tell whether its own service changed.
+          fetch-depth: 2
+
+      - name: Decide whether this service changed
+        id: changed
+        run: |
+          set -euo pipefail
+          # A manual run always builds: it exists to publish the first image,
+          # when by definition nothing has changed.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Both services share one workflow, so each run has to ask whether it
+          # is about this one. Without this, editing one service republishes
+          # the other with a new digest, and an unchanged service would get a
+          # release it did not earn.
+          if git diff --quiet HEAD^ HEAD -- \
+               "services/${{ matrix.service }}" \
+               "charts/${{ matrix.service }}"; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign in to the package registry
+        if: steps.changed.outputs.build == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Issued for this run and expired when it ends. Nothing long-lived is
+          # stored anywhere, which is why publishing needs no secret of its own.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image, without publishing it yet
+        if: steps.changed.outputs.build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/${{ matrix.service }}
+          # Loaded locally so the scan below examines the exact bytes that
+          # would be published. Scanning after publishing would mean the thing
+          # being judged is already available to pull.
+          load: true
+          push: false
+          tags: ${{ matrix.service }}:candidate
+
+      - name: Scan it for known vulnerabilities
+        if: steps.changed.outputs.build == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.service }}:candidate
+          format: table
+          # Fail the build on anything serious that has a fix available.
+          #
+          # The qualifier is the decision. Failing on findings with no fix
+          # stops the pipeline over something nobody can act on, and a gate
+          # that cannot be satisfied gets disabled within a week. Failing on
+          # findings that *can* be fixed is a gate with an action attached.
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Publish it
+        id: publish
+        if: steps.changed.outputs.build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          # A tag for humans reading the registry listing, and it is not what
+          # gets deployed. What gets deployed is the digest this step returns,
+          # because a tag can later be moved to different bytes and a digest
+          # cannot.
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+
+      - name: Record the digest in the development environment
+        if: steps.changed.outputs.build == 'true'
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          FILE="environments/dev/${{ matrix.service }}.yaml"
+
+          # Only the development environment. Promotion to staging is a human
+          # editing a file, because promotion is a decision and this pipeline
+          # does not get to make decisions.
+          python3 - "$FILE" "$DIGEST" "${{ github.sha }}" <<'PY'
+          import re, sys
+          path, digest, sha = sys.argv[1:4]
+          text = open(path).read()
+          # Replace the value, keep every comment and every other line as it is.
+          new, n = re.subn(r'^(\s*digest:\s*).*$',
+                           lambda m: '%s%s  # built from %s' % (m.group(1), digest, sha[:12]),
+                           text, count=1, flags=re.M)
+          if n != 1:
+              sys.exit("expected exactly one digest line in %s, found %d" % (path, n))
+          open(path, 'w').write(new)
+          PY
+
+          if git diff --quiet -- "$FILE"; then
+            echo "digest unchanged; nothing to commit"
+            exit 0
+          fi
+
+          git config user.name  "kestrel-pay pipeline"
+          git config user.email "noreply@github.com"
+          git add "$FILE"
+          git commit -m "Point dev at the newly built ${{ matrix.service }} image"
+
+          # Two services can finish at once and both want to commit. Rebase
+          # onto whatever landed first rather than failing the run.
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin main && git push origin HEAD:main && exit 0
+            echo "push rejected, retrying ($attempt)"
+          done
+          exit 1

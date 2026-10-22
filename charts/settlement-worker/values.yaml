@@ -15,7 +15,7 @@ image:
   digest: ""
   pullPolicy: IfNotPresent
 
-version: "dev"
+version: "unspecified"
 
 # How long a run takes, and how much it pretends to process. Configurable
 # because demonstrating that two runs cannot overlap requires a run that

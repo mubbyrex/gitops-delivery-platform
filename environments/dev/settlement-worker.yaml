@@ -1,0 +1,23 @@
+# settlement-worker in dev.
+#
+# Note what is not here and will never be: a replica count. For the API a
+# second copy is capacity. For this one a second copy is the hazard.
+
+# Often, because dev is where the behaviour is being watched and a job that
+# runs twice an hour is tedious to observe.
+schedule: "*/5 * * * *"
+
+version: "dev"
+
+image:
+  digest: ""
+
+# Shorter than the gap to the next run, so that normal operation does not
+# constantly exercise the overlap path. Making a run outlast its schedule is
+# done deliberately when demonstrating that overlap is refused.
+run:
+  forSeconds: 30
+  itemCount: 30
+
+failure:
+  run: false

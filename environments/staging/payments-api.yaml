@@ -1,0 +1,26 @@
+# payments-api in staging.
+#
+# Deliberately not identical to dev. If two environments held the same values
+# the layout would be untested, and the claim that environment differences are
+# confined to these files would never have been exercised.
+
+# One copy. Staging has a tighter ceiling than dev, and the difference is the
+# thing being demonstrated: same chart, different shape of deployment.
+replicaCount: 1
+
+version: "staging"
+
+image:
+  # Not written by the pipeline. Promotion to staging is a human editing this
+  # line, because promotion is a decision and decisions belong in the history
+  # rather than happening automatically on every build.
+  digest: ""
+
+failure:
+  liveness: false
+  readiness: false
+
+# Wait before reporting ready, unlike dev. Staging is where a rollout should
+# have something to wait for, so that a release with a slow start is visibly
+# slow here rather than surprising somewhere later.
+readyAfterSeconds: 10

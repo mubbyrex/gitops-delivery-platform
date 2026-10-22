@@ -1,0 +1,22 @@
+# settlement-worker in staging.
+
+# Less often than dev. Staging is not where behaviour is watched minute to
+# minute, and every run occupies a pod slot in a namespace with a tighter
+# ceiling than dev's.
+schedule: "0 * * * *"
+
+version: "staging"
+
+image:
+  # Promotion is a human editing this line. See the note in this environment's
+  # payments-api values.
+  digest: ""
+
+# A longer run than dev, because staging is where a run that overruns its
+# window is worth seeing before it matters.
+run:
+  forSeconds: 120
+  itemCount: 60
+
+failure:
+  run: false
