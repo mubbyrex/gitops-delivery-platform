@@ -16,8 +16,8 @@ image:
 # constantly exercise the overlap path. Making a run outlast its schedule is
 # done deliberately when demonstrating that overlap is refused.
 run:
-  forSeconds: 400
-  itemCount: 40
+  forSeconds: 30
+  itemCount: 30
 
 failure:
   run: false

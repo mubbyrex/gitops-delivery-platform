@@ -41,9 +41,22 @@ spec:
   concurrencyPolicy: Forbid
 
   {{- /*
-  If the scheduler was down when a run was due, do not fire it late. A
-  settlement run has a window it belongs to, and running yesterday's job this
-  morning is a different thing from running it on time.
+  How late a run may still start. This is not only the guard against a
+  scheduler that was down — it is also what decides what happens to a run that
+  was refused because the previous one was still going.
+
+  Measured, not assumed. With a five-minute schedule and a run that lasted
+  longer than its own period, the next run was not discarded: it started 103
+  seconds late, the moment the previous one finished, because that was inside
+  this window. So concurrencyPolicy: Forbid does not mean "at most one run per
+  period". It means "never two at once", and a long run pushes the next one
+  later rather than cancelling it.
+
+  Two minutes against a five-minute schedule therefore permits a third of a
+  period of drift. For a settlement run that belongs to a window, that is a
+  real choice and not a default worth inheriting — if lateness matters more
+  than completeness, this number should be small enough that a deferred run is
+  dropped instead.
   */}}
   startingDeadlineSeconds: 120
 

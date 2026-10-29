@@ -1054,13 +1054,34 @@ retry is a second attempt over the same batch. Late runs are not fired after
 their window, because a settlement run belongs to a window and yesterday's job
 executed this morning is a different job.
 
-**Accepted cost.** A run that is skipped is simply skipped. There is no queue,
-no catch-up, and nothing records that a window was missed beyond the absence of
-a run — so a worker that consistently overruns its schedule silently does half
-the work it should, and the only signal is one that nobody is looking at yet.
-Monitoring that is a later concern, and until then this trades a loud failure
-for a quiet one. That is the right trade when the loud failure is paying
-somebody twice, and it is still a cost.
+**Accepted cost, corrected after measuring it.** The original version of this
+entry said a refused run is simply skipped, with no queue and no catch-up. That
+was wrong, and the correction matters more than the original claim.
+
+What actually happens was established by making a run outlast its own schedule
+and watching: the refused run was **not** discarded. It started 103 seconds
+late, the instant the previous run finished, because that was still inside the
+window set by how late a run may begin. Nothing was lost. The refusal is
+visible in the scheduler's own event — *not starting job because prior
+execution is running* — and the run then arrives behind schedule.
+
+So the guarantee is narrower than "one run per period". It is "never two at
+once". A long run delays the next one rather than cancelling it, and whether a
+sufficiently delayed run is eventually dropped is decided by a separate setting
+that is easy to leave at whatever it was.
+
+The real cost is therefore drift rather than loss. A worker that consistently
+overruns pushes every subsequent run later until one of them finally exceeds
+the lateness allowance and is dropped — at which point a run genuinely does
+disappear, with nothing recording it beyond the absence. For a job whose output
+belongs to a window, arriving late can matter as much as not arriving, and
+neither condition is currently alarmed on.
+
+A second cost, separate and real: a run that fails is terminal, so it does not
+hold the slot. Only a run still *going* blocks the next one. That is the right
+behaviour, and it means "the worker is wedged" and "the worker is failing every
+time" produce completely different schedules, which anything watching this will
+have to tell apart.
 
 ---
 
