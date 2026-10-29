@@ -139,14 +139,26 @@ func main() {
 		return http.StatusOK
 	}))
 
-	mux.HandleFunc("/", instrument("/", func(w http.ResponseWriter, r *http.Request) int {
+	// The catch-all. Anything that is not one of the routes above lands here,
+	// and the path label matters: a later stage writes release gates against
+	// these series, and attributing every stray request to "/" would let a
+	// scanner hammering unknown URLs fail a release for the one route that was
+	// working fine. Unknown paths are counted under a single "other" label
+	// rather than under their own, because labelling by request path lets an
+	// outsider create unbounded series by inventing URLs.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return http.StatusNotFound
+			instrument("other", func(w http.ResponseWriter, r *http.Request) int {
+				http.NotFound(w, r)
+				return http.StatusNotFound
+			})(w, r)
+			return
 		}
-		fmt.Fprintf(w, "payments-api %s — a stub. It settles nothing.\n", cfg.version)
-		return http.StatusOK
-	}))
+		instrument("/", func(w http.ResponseWriter, r *http.Request) int {
+			fmt.Fprintf(w, "payments-api %s — a stub. It settles nothing.\n", cfg.version)
+			return http.StatusOK
+		})(w, r)
+	})
 
 	mux.Handle("/metrics", promhttp.Handler())
 
