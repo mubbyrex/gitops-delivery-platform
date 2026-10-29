@@ -21,7 +21,7 @@ image:
 # the point — breaking a service deliberately should be as visible and as
 # reversible as any other change.
 failure:
-  liveness: false
+  liveness: true
   readiness: false
 
 readyAfterSeconds: 0
