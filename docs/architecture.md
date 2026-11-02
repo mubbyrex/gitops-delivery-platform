@@ -4,11 +4,17 @@ What runs where, which system owns which resources, and where the boundaries
 between them sit.
 
 This describes what is built today. The platform provisions a cluster, hands it
-over to a delivery controller, and that controller now brings up everything
-else: two environments, an ingress path from outside, and a way for a pod to
-read a secret held in AWS. It does not yet run an application. That is the
-intended stopping point for this stage, not an omission — what is finished is
-the machinery an application would arrive into.
+over to a delivery controller, and that controller brings up everything else:
+two environments, an ingress path from outside, a way for a pod to read a
+secret held in AWS, and two services that run.
+
+A change to a service reaches the cluster without anyone applying anything —
+edit the source, and a pipeline builds it, scans it, publishes it and commits a
+reference, which the controller picks up. What is not yet built is the part
+that makes the two services interesting: neither is released in the way that
+distinguishes them, nothing yet measures whether a release is going well, and
+no release is gated on the answer. That is the intended stopping point for this
+stage rather than an omission.
 
 ## The shape of it
 
@@ -29,6 +35,8 @@ Inside the cluster, in the order the controller brings them up:
 | secrets operator | reads secrets out of AWS on the cluster's behalf |
 | secret store and requests | which AWS secrets this platform expects to exist |
 | `dev`, `staging` | one namespace each, with ceilings on what they may consume |
+| `payments-api` | in both environments — a long-running workload that scales by replica count |
+| `settlement-worker` | in both environments — a scheduled job that must never run twice at once |
 
 Solid outlines in the diagrams are built. Dashed outlines are planned. The
 colour says which system owns a resource: one for the provisioning tooling, one
@@ -85,20 +93,6 @@ the other way the whole approach would have needed replacing.
 The controller polls this repository and applies what it finds. That is the only
 route in, and it is the one rule the rest of the design is arranged around.
 
-There is no image pipeline yet. When there is, it will not reach the cluster
-either: it will build an image, push it, and commit the new tag back here, so
-the arrow still points outward from the cluster to the repository and never
-inward. Nothing is granted cluster credentials in order to deploy, because
-nothing needs them — committing is deploying.
-
-The second diagram is mostly about the two workloads this platform exists for,
-and why they cannot be released the same way. One is stateless and can have two
-versions serving at once while traffic is shifted gradually and measured. The
-other pays merchants, and two versions touching the same batch means paying
-someone twice — so it is released by ensuring only one version can ever be
-active, and only between runs. Neither is built yet, and the specific
-thresholds and steps are not yet chosen.
-
 Components come up in a declared order, because some of them are instances of
 types that others install. The routing type definitions are applied before the
 ingress controller that consumes them, and the secrets operator before the
@@ -106,6 +100,36 @@ store definition that is an instance of its types. The ordering is expressed as
 a wave number on each component rather than built by hand, and it is the same
 problem in both cases: an object cannot be created before the type that defines
 it.
+
+A build pipeline now exists, and it does not reach the cluster either. On a
+change to a service it builds an image, scans it, publishes it, and commits a
+reference back to this repository. That commit is the only way a new version
+arrives. Nothing is granted cluster credentials in order to deploy, because
+nothing needs them — committing is deploying.
+
+What the pipeline is allowed to do is written out one permission at a time,
+with a reason attached to each: read this repository, write a commit to it,
+publish a package. Everything else is denied by default rather than left to
+whatever the platform grants. It holds no cluster credential, no cloud
+credential, and not even the permission that would let it exchange its own
+identity for one.
+
+**The reference it commits identifies content, not a name.** A tag can be
+repointed at different bytes later, which would mean the running version is not
+determined by what is committed. So what lands in the environment file is a
+digest, and the chart has no tag field at all to fall back on. The cost is
+readability: nobody can tell which version is deployed by looking, and a diff
+between two releases shows two meaningless strings.
+
+**It writes to one environment only.** The pipeline commits to development.
+Moving a version onward is a human editing a line, because promotion is a
+decision and this pipeline does not get to make decisions. The two environments
+are therefore expected to differ, and usually do.
+
+The second diagram is about the two workloads this platform exists for and why
+they cannot be released the same way. Both now run; neither is yet released in
+the way that distinguishes them. That difference is the subject of its own
+section below.
 
 ### What the repository is authoritative over, exactly
 
@@ -165,6 +189,88 @@ A namespace is not a security boundary. It separates names and applies quotas;
 it does not stop a workload that is trying to reach another. The names here are
 `dev` and `staging` rather than anything implying isolation, because implying
 it would be a claim that does not survive inspection.
+
+## The two workloads, and why they are shaped differently
+
+Both services are stubs and will stay stubs. Each serves a health endpoint, a
+metrics endpoint, and carries a switch that makes it fail on purpose. Neither
+computes anything, and the file each lives in says so in its opening paragraph
+rather than letting a reader work it out. The asymmetry this platform is about
+is in how they are *delivered*, not in what they calculate.
+
+One chart each, identical across environments, with every difference held in a
+values file per environment. The shapes differ, and the difference should be
+visible from the files rather than needing to be explained:
+
+| | the API | the worker |
+|---|---|---|
+| kind | long-running | scheduled |
+| replica count | present, and meaningful | **absent, not set to one** |
+| update strategy | one at a time, never below the desired count | — |
+| probes | liveness and readiness, different endpoints | — |
+| stable address | yes | none; nothing connects to it |
+| retries on failure | — | none |
+
+The missing replica count is the sharpest of these. For the API a second copy
+is capacity. For the worker a second copy is the hazard, so the dial does not
+exist rather than being set to one and trusted.
+
+### Two probes that look alike and behave nothing alike
+
+The API has a liveness check and a readiness check, pointed at different
+endpoints, and the distinction is the most consequential thing in either chart.
+Both were broken deliberately and watched.
+
+**Liveness failing gets the container destroyed.** The platform kills and
+restarts it, roughly every thirty seconds, indefinitely. Traffic is lost as a
+side effect — a restarting container is not ready, so it leaves the service,
+returns, and is killed again. Every replica does this independently, and there
+is no stable state to observe or roll back from.
+
+**Readiness failing takes traffic away and touches nothing else.** The
+container keeps running, keeps answering correctly, and is simply not sent any
+work. Nothing is destroyed. Measured over two minutes, the restart count did
+not move once.
+
+Pointing both at the same endpoint is the common mistake, and it converts "this
+copy is busy" into "restart every copy".
+
+### The stall is the safety property
+
+Readiness failing produced something better than a safe failure. Because the
+update strategy never drops below the desired count, the platform will not
+retire an old copy until a new one is ready — so when the new copies never
+became ready, the release simply **stopped**, with the old ones still serving.
+
+In a real bad release that is the whole game: the new version never qualifies
+for traffic, the old version keeps serving, and the deployment freezes rather
+than progressing. Nothing is half-applied, so nothing needs undoing; when
+readiness passes again the release resumes from where it stopped. That is
+release safety arriving from one line of configuration, and it is the
+foundation the gradual-release work builds on.
+
+### What the worker does instead
+
+It refuses to overlap. One setting, chosen deliberately from three, and nothing
+built: if a run is still going when the next falls due, the next is not started
+alongside it. Retries are off for the same reason — a retry is a second attempt
+over the same batch, which is the same hazard separated in time rather than
+running alongside.
+
+The guarantee is narrower than it first appears, and this was established by
+making a run outlast its own schedule rather than by reading the documentation:
+
+- A run that is still **going** blocks the next one. Observed.
+- A run that has **failed** does not. Failure is terminal, so the slot is free,
+  and the next run starts on time.
+- A blocked run is **deferred, not discarded.** When the long run finished, the
+  run it had blocked started a hundred and three seconds late, because that was
+  still inside the window allowed for a late start.
+
+So the property is "never two at once", not "at most one per period". A worker
+that consistently overruns pushes each subsequent run later until one finally
+exceeds the lateness allowance and is genuinely dropped. The cost is drift
+rather than loss, and neither condition is alarmed on yet.
 
 ## Getting in from outside
 
@@ -249,12 +355,20 @@ work, are in [runbook.md](runbook.md).
 
 ## Cost, and what is tagged
 
-Running costs about **$0.22 an hour**: roughly $0.10 for the control plane,
-$0.045 for a single NAT gateway, $0.042 for two small nodes, $0.025 for the
-load balancer, and half a cent for a public address. Around $158 a month if
-left up, which is why the platform is built to be torn down between working
-sessions and rebuilt from this repository. Everything inside the cluster is
-reconciled from source control, so rebuilding costs time rather than work.
+Running costs about **$0.26 an hour**: roughly $0.10 for the control plane,
+$0.083 for two nodes, $0.045 for a single NAT gateway, $0.025 for the load
+balancer, and half a cent for a public address. Around $190 a month if left up,
+which is why the platform is built to be torn down between working sessions and
+rebuilt from this repository. Everything inside the cluster is reconciled from
+source control, so rebuilding costs time rather than work.
+
+The nodes were the most recent thing to change, and the reason is worth stating
+because it is the normal life of a sizing decision rather than a correction. The
+original pair were the cheapest instances that cleared the pod-per-node ceiling
+the networking plugin imposes. Once the platform components alone occupied
+nineteen of the twenty-two available slots, there was no room for the workloads
+the cluster exists to run, and the sizing that had been right became the sizing
+that had been outgrown.
 
 Two secrets in AWS add about $0.80 a month and are not torn down with the
 cluster, deliberately — they are what makes a rebuild produce a working
@@ -296,9 +410,22 @@ report.
 ## What is deliberately absent
 
 No remote state: state is a local file, and the two configurations share only
-the cluster's name rather than reading each other's state. No application, no
-image pipeline, no database, no metrics, no progressive delivery. Each is
-deferred rather than forgotten.
+the cluster's name rather than reading each other's state. No metrics
+collection, no progressive delivery, no release windows. Each is deferred
+rather than forgotten.
+
+**No database, and that one is a decision rather than a deferral.** The batch
+worker stores nothing. It was considered carefully and refused, because the
+order of the question — establish what it stores, then decide where that lives
+— produced no answer to the first half. Storage added anyway would have been
+storage invented to justify the mechanism for reaching it.
+
+That has a consequence worth naming. The hazard this whole platform is arranged
+around — two settlement runs paying a merchant twice — is stated in
+`scenario.md` and is never demonstrated here. What is demonstrated is that two
+runs cannot occur. The prevention, not the harm it prevents. Demonstrating the
+harm would require the payment logic this project refuses to write, so the gap
+is permanent and is better stated than papered over.
 
 The reasoning behind these, and behind everything above, is in
 [decisions.md](decisions.md) — including the costs accepted along the way.
