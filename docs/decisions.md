@@ -1129,3 +1129,70 @@ A second cost, quieter: the base image here is distroless and carries almost no
 operating system packages, so this gate currently has very little to find. It
 will look like it is working when it is mostly not being exercised, and the
 first time it fires will be the first time it is really tested.
+
+---
+
+## The batch worker gets no database, because it has nothing to store
+
+**Context.** A settlement worker that persists nothing is not the shape of a
+settlement worker. The question was whether to give it a database, and if so
+what happens to the contents when the platform is torn down between working
+sessions.
+
+**Decision.** No database. The worker stores nothing.
+
+**Why, and it was not the money.** The smallest usable instance costs about two
+pence an hour against a platform already running at twenty-six. Cost was never
+going to decide this.
+
+What decided it was insisting on the order: establish what the worker stores,
+and only then decide where it lives. The first half has no answer. By the end
+of the work the worker had demonstrated everything it exists to demonstrate — a
+scheduled shape, refusal to run twice at once, a run deferred because the
+previous one overran, a failure that is deliberately not retried — with a
+process that sleeps and exits. Nothing was ever written down because there was
+never anything to write.
+
+Choosing storage first and then looking for something to put in it is how a
+reference platform acquires a database it does not need, and then a backup
+strategy for data nobody reads.
+
+**Rejected: a row per processed item, to make overlap visible.** The strongest
+argument, and it nearly carried. Two runs over one batch leaving two rows is a
+more convincing demonstration than a scheduler event announcing that it
+declined to start something.
+
+It fails on what it would actually show. To see duplicate rows you must first
+defeat the exclusion on purpose, and what you have then demonstrated is that a
+row got written twice. The hazard this platform is built around is not a
+duplicate row — it is a duplicate *payment*. Nothing here computes a payment
+and nothing ever will. So the database would be demonstrating its own mechanism
+while appearing to demonstrate the scenario, and a careful reader notices the
+difference.
+
+**Rejected: a database so the secrets mechanism has a second job.** A fair
+point — a database password is a better test of that mechanism than a console
+password. Rejected because building a stateful dependency in order to have a
+credential worth fetching is inventing a requirement to justify a mechanism.
+
+**Accepted cost, and it is the one a reviewer would raise.** The double-payment
+hazard remains an assertion. The scenario document states that two concurrent
+settlement runs would pay a merchant twice; nothing in this repository
+demonstrates it, and now nothing will. What is demonstrated is that two runs
+cannot occur — the prevention, never the harm.
+
+The honest framing is that the harm could not have been demonstrated here under
+any version of this decision, because demonstrating it requires the payment
+logic the project refuses to write. Someone who asks to see the double payment
+gets the scenario and a straight answer rather than a staged one.
+
+A second cost: a settlement worker that settles nothing and stores nothing is a
+shape without substance. Anyone opening its source finds a process that sleeps.
+The file says so in its opening paragraph rather than letting them discover it.
+
+A third, deferred rather than avoided: the question of what happens to stored
+state on teardown is still real and still owed. It moves to the component that
+introduces storage for a reason — the metrics database in the next stage, whose
+contents are the record of how these services behaved. Asking it there means
+asking it about state with a purpose instead of state invented to carry the
+question.
