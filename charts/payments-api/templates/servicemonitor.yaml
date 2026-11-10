@@ -1,0 +1,42 @@
+{{- /*
+What to scrape, committed next to the thing it describes.
+
+This is the half of collection that is a decision rather than plumbing. The
+collector could have been handed a list of targets to read, and that list would
+then live somewhere central, owned by nobody, and go stale the first time a
+service moved. Instead each service carries its own description, so adding a
+service later is a file in that service's chart and nothing central is edited.
+
+The collector finds this because it was installed with its selectors left
+empty, which means "match every such object in every namespace" rather than
+"match only the ones belonging to my own release". That one setting is what
+makes this file sufficient on its own.
+
+There is no equivalent of this file that would work for the other service.
+A Service is a stable address, and this object finds its targets through one;
+the batch worker has no Service because nothing connects to it. What it gets
+instead is in its own chart, and the difference is the shape of the workload
+showing through again.
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: payments-api
+  labels:
+    app.kubernetes.io/name: payments-api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payments-api
+
+  endpoints:
+    # The same port the service answers requests on. The metrics endpoint is
+    # served by the same process on the same listener, so there is no second
+    # port to expose and nothing extra to reach.
+    - port: http
+      path: /metrics
+      # This service is always running, so the interval is a question of
+      # resolution rather than of whether anything is caught at all. Thirty
+      # seconds is the collector's own default and there is no reason here to
+      # depart from it.
+      interval: 30s

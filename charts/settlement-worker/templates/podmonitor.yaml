@@ -1,0 +1,55 @@
+{{- /*
+What to scrape, for a workload that is absent most of the time.
+
+The other chart describes its targets through a Service. This one cannot: a
+scheduled job is not something anything connects to, so there is no Service to
+point at and no stable address behind it. This object finds the run's pods
+directly instead, by the label the job template puts on them.
+
+That difference is not a workaround. It is the same difference that decides
+how each service is released, showing up again in how each one is observed.
+
+WHAT IS NOT YET KNOWN, AND IS NOT ASSUMED HERE.
+
+A run exists for about thirty seconds, once every ten minutes -- roughly five
+percent of the time. Pull-based collection asks on a timer, so the question is
+not whether this object is correct but whether a timer ever lands while there
+is anything to ask. The interval below is set short to give it the best chance,
+and that is a mitigation rather than an answer.
+
+The specific risk is not "nothing is collected". It is that *something* is
+collected, sometimes -- which looks like it works, reads as a gap in the data
+when it does not, and is harder to notice than complete silence would be. A
+counter that is only ever read part-way through a run also never shows the
+total the run finished with, because the last scrape happens before the last
+item does.
+
+Whether this is good enough, or whether the run's numbers need somewhere to
+outlive the run, is settled by observation rather than here.
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: settlement-worker
+  labels:
+    app.kubernetes.io/name: settlement-worker
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: settlement-worker
+
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      # Short on purpose, and only because the target is short-lived. Against a
+      # run of about thirty seconds this is the difference between a handful of
+      # readings and possibly none. It is not a statement that this data is
+      # more important than the other service's -- it is the collection method
+      # straining against the shape of the workload.
+      interval: 10s
+      # Bounded well under the interval. A pod part-way through shutting down
+      # can accept a connection and then never answer; without a timeout
+      # shorter than the interval, that attempt would still be outstanding when
+      # the next one falls due. This does not stop such a scrape failing -- it
+      # stops one failure from consuming the slot the next reading needs.
+      scrapeTimeout: 5s
