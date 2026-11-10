@@ -1,0 +1,21 @@
+# These views are deliberately not part of either service's own chart, which is
+# where that service's scrape definition lives.
+#
+# The difference is what the object is scoped to. A scrape definition describes
+# targets in one namespace, so one belongs in each environment and two copies
+# are correct. A view describes a service across environments and switches
+# between them with a selector, so a second copy is not a second view -- it is
+# the same view listed twice in the menu. The dashboard sidecar watches every
+# namespace, so shipping these from a per-environment chart would do exactly
+# that.
+#
+# Hence one release, into the namespace the collector lives in.
+
+# The label the dashboard sidecar looks for. Set here rather than inline so
+# that the coupling to the metrics chart is visible in one place.
+sidecarLabel: grafana_dashboard
+
+# Which environments the views offer in their namespace selector.
+environments:
+  - dev
+  - staging

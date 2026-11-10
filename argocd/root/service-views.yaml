@@ -1,0 +1,50 @@
+# One view per service.
+#
+# Wave two, alongside the services themselves rather than with the collector.
+# These are config maps that the dashboard sidecar picks up; they need the
+# sidecar to exist, which wave zero provides, and nothing else needs them.
+#
+# A single release rather than one per environment, which is the opposite of
+# how the scrape definitions are shipped. The two objects are scoped
+# differently: a scrape definition describes targets in one namespace, so one
+# belongs in each environment; a view describes a service across environments
+# and switches between them with a selector at the top. The sidecar watches
+# every namespace, so shipping these per environment would not produce two
+# views -- it would produce the same view listed twice.
+#
+# There is no values file per environment here for the same reason. The
+# environments this view offers are a property of the view, not of a place it
+# is deployed to.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: service-views
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+    # Tracks the branch rather than a fixed commit, which is how the delivery
+    # controller is meant to work and is not the same thing as an unpinned
+    # dependency. Charts and images from outside this repository are pinned
+    # exactly; this repository's reference to itself is the mechanism.
+    targetRevision: main
+    path: charts/service-views
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Deployed where the collector lives, not where the services do. The views
+    # describe both environments and belong to neither.
+    namespace: metrics
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

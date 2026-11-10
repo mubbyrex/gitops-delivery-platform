@@ -1,0 +1,24 @@
+{{- /*
+Each dashboard is a file rather than a block of JSON embedded in a template.
+Grafana's JSON is long and mostly mechanical, and a reviewer who has to read it
+through Helm's templating reads neither well.
+
+The sidecar in the metrics chart watches every namespace for config maps
+carrying the label below and loads whatever it finds. That is what "committed,
+not clicked" means here: a view that someone edits in the browser is gone at
+the next sync, because this is the source.
+*/}}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+{{- $name := base $path | trimSuffix ".json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: view-{{ $name }}
+  labels:
+    {{ $.Values.sidecarLabel }}: "1"
+    app.kubernetes.io/name: service-views
+data:
+  {{ $name }}.json: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
