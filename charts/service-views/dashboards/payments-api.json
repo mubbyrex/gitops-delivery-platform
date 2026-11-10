@@ -51,7 +51,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Zero traffic and a healthy service look identical** in the three rate panels below. That is why *Targets up* is first: it answers whether the service is **there**, which is a different question from whether it is **succeeding**.\n\n- Up, no traffic \u2192 idle. Normal here.\n- Not up \u2192 broken, regardless of what the rates show.\n- Up, traffic, failures \u2192 broken differently.\n\nNo panel declares a number too high. That is a release decision and it does not live here."
+        "content": "The rate panels below **exclude the kubelet's health probes**. They did not at first, and that was wrong in a way worth knowing: probe traffic kept every number moving, so a service nobody was calling looked like it was serving requests, and a failing readiness probe looked like users getting errors.\n\nWith probes excluded, **zero traffic and a healthy service now do look identical** here. That is why *Targets up* is first: it answers whether the service is **there**, which is a different question from whether it is **succeeding**.\n\n- Up, no traffic \u2192 idle. Normal here.\n- Up, but *Rollout* shows updated below desired \u2192 a deploy is wedged while the previous version keeps serving. Nothing else on this page will move.\n- Not up \u2192 broken, regardless of what the rates show.\n\nNo panel declares a number too high. That is a release decision and it does not live here."
       }
     },
     {
@@ -228,7 +228,7 @@
     {
       "type": "timeseries",
       "title": "Requests by status",
-      "description": "Misses a request that returns success carrying wrong data.",
+      "description": "Excludes the kubelet's health probes. Without that filter this panel reported the probe rate as if it were traffic, and a service nobody was calling looked busy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -275,7 +275,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (status) (rate(payments_api_requests_total{namespace=\"$namespace\"}[5m]))",
+          "expr": "sum by (status) (rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\"}[5m]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -284,7 +284,7 @@
     {
       "type": "timeseries",
       "title": "Share of requests failing",
-      "description": "Reads zero when nothing is being served at all. Read it beside Targets up.",
+      "description": "Real requests only. With probes included, a failing readiness probe showed here as a fifth of requests failing, which reads as users being served errors when no user was involved.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -333,7 +333,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(payments_api_requests_total{namespace=\"$namespace\", status!~\"2..\"}[5m])) or vector(0)) / clamp_min(sum(rate(payments_api_requests_total{namespace=\"$namespace\"}[5m])), 0.0001)",
+          "expr": "(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\", status!~\"2..\"}[5m])) or vector(0)) / clamp_min(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\"}[5m])), 0.0001)",
           "legendFormat": "failing share",
           "refId": "A"
         }
@@ -349,7 +349,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
         "y": 13
       },
@@ -401,6 +401,78 @@
           "expr": "histogram_quantile(0.50, sum by (le) (rate(payments_api_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
           "legendFormat": "p50",
           "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rollout",
+      "description": "Desired against updated and available. A readiness failure does not take the service down -- the previous version keeps serving -- so nothing else on this page moves much. This is where a wedged deploy becomes visible: updated falls below desired and stays there.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "legendFormat": "desired",
+          "expr": "max(kube_deployment_spec_replicas{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "legendFormat": "updated",
+          "expr": "max(kube_deployment_status_replicas_updated{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "legendFormat": "available",
+          "expr": "max(kube_deployment_status_replicas_available{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
         }
       ]
     }

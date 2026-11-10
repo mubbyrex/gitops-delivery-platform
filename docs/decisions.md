@@ -1362,6 +1362,22 @@ failures, no durations. A service that is perfectly healthy and idle produces
 the same numbers as a service that is unreachable, crash-looping, or gone — and
 on a platform with no real users, idle is the normal state.
 
+**Corrected after breaking it on purpose: they did not read zero, and that was
+worse.** The counter records every request the process serves, and the cluster
+probes it constantly for liveness and readiness. So an idle service reported a
+steady rate of successful requests that was entirely the kubelet talking to
+itself, and the view showed a service busily serving nobody. Worse still, when
+the readiness probe was made to fail, those failures landed in the same counter
+and the view reported a fifth of requests failing — which reads as users being
+served errors, when no user was involved and the previous version was serving
+every real request without fault.
+
+The indicators now exclude the probe paths, which restores the zero-means-two-
+things problem described above rather than removing it. That is the right
+trade: a number that is honestly ambiguous is easier to reason about than one
+that is confidently wrong. None of this was visible by reading the metric
+definitions; it took throwing the switch.
+
 So the numbers above are not sufficient on their own and are not treated as
 such. Whether the service is *there* is a separate question from whether it is
 *succeeding*, answered by whether its pods report ready, which the cluster

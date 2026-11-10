@@ -20,4 +20,4 @@ run:
   itemCount: 30
 
 failure:
-  run: true
+  run: false
