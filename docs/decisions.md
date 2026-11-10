@@ -1389,3 +1389,79 @@ anybody reading only the first will misread an idle service as a working one
 and a dead one as idle. That ambiguity is not solved here. It is marked, and
 the view is built so the readiness signal sits beside the other three rather
 than on a separate page.
+
+## What says the batch worker is healthy, and why it is answered from outside
+
+The other service is asked whether it is healthy by reading its own metrics.
+This one mostly cannot be, and finding that out changed where the answer comes
+from.
+
+The familiar four signals do not transfer, and saying which do not is most of
+the work. There is no traffic: nothing calls this service, and "how many runs"
+is decided by the schedule rather than by demand, so it reports back only what
+the schedule already states. There is no latency: latency is time spent while
+something waits for an answer, and nothing waits on this. Errors transfer
+directly — a run completed or it did not. Saturation transfers, but not through
+capacity: there is no worker count to raise, because a second concurrent run is
+the hazard this service is shaped to prevent rather than the cure for a slow
+one. For a scheduled job, saturation is lateness. A run that outlasts the gap
+to the next one pushes that next one later, and runs begin drifting.
+
+**Why the numbers come from the cluster rather than from the process.** The
+service exposes a run-outcome counter and a run-duration gauge, and both are
+written at the moment the run ends. The process then exits and its metrics
+endpoint goes with it. Scraping the real image mid-run returns neither: the
+outcome counter has no series yet, because a labelled counter has none until
+its label is first used, and the duration still reads zero. A collector that
+asks on a timer therefore has almost no opportunity to read either one.
+
+The durable record of a run is the Job object, which outlives the pod that did
+the work, and the cluster's own exporter already reports on those. So the
+primary indicators are read from there and the service's own metrics are the
+supplement. That is the exact inverse of the request-serving service, and the
+inversion is not a preference — it is what the difference between a process
+that stays still and one that does not actually implies.
+
+**The indicators.** Whether recent runs completed or failed. How long it has
+been since one last succeeded. How long a run takes compared with the gap
+before the next is due. And how many runs are active at once, which should
+never exceed one.
+
+The second of those is the one that would be missed by anybody porting the
+API's thinking across. Counters move when something happens, and nothing moves
+when nothing happens — so a worker that silently stops being scheduled produces
+no failures, no errors, and no change in any total. The numbers simply stop,
+and a stopped number is indistinguishable from a quiet one. Measuring elapsed
+time since the last success is the only indicator here that treats absence as a
+signal, and absence is this workload's most likely silent failure.
+
+The fourth exists for a different reason again. It is not expected to vary. It
+is there because it is the only number that would reveal the central hazard if
+the scheduler's refusal to overlap ever stopped holding, and a guarantee that
+nobody measures is a belief.
+
+**Rejected: items processed, as a health indicator.** The most readily
+available number and the least informative. It is the one value that *can* be
+scraped mid-run, which makes it tempting. Rejected because its final figure —
+the only one that says what the run actually got through — is never collected,
+and in a stub it counts loop iterations over nothing.
+
+**Rejected: adding a push step so the service reports its own outcome.** This
+would make the service's own numbers reachable and is a known, standard
+remedy. Rejected at this stage because the cluster already holds the same facts
+in the Job objects, and installing a component to re-learn something already
+recorded is work added on top of plumbing that exists.
+
+**No threshold appears here.** How late is too late, and how long is too long,
+are release decisions and belong to whatever has to act on them.
+
+**Accepted cost.** The chosen indicators say whether runs happen and whether
+they finish, and nothing about whether they are right. A run that completes
+promptly having settled the wrong things reports as healthy on every one of
+them. That gap is permanent rather than deferred, because the service has no
+settlement logic to be right or wrong about and is not going to grow any.
+
+A second cost: two of the four are read from the cluster's record rather than
+from the service, so they describe what the scheduler observed rather than what
+the code did. If a run exits zero while having done nothing at all, the record
+says it succeeded, and nothing here contradicts it.
