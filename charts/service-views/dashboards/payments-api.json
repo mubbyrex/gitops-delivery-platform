@@ -310,7 +310,9 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       },
@@ -398,7 +400,7 @@
           },
           "expr": "histogram_quantile(0.50, sum by (le) (rate(payments_api_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))",
           "legendFormat": "p50",
-          "refId": "A"
+          "refId": "B"
         }
       ]
     }

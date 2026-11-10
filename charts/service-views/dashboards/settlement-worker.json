@@ -286,7 +286,7 @@
           },
           "expr": "sum(kube_job_status_failed{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
           "legendFormat": "failed",
-          "refId": "A"
+          "refId": "B"
         }
       ]
     },
@@ -351,7 +351,7 @@
           },
           "expr": "max(time() - kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
           "legendFormat": "since last schedule",
-          "refId": "A"
+          "refId": "B"
         }
       ]
     }
