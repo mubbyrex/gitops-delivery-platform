@@ -1553,3 +1553,125 @@ series of limited use. It is kept rather than deleted because the partial
 reading is itself the evidence for this decision, and because the one thing it
 does supply — which version performed a run — is needed by the stage that
 releases two versions at once.
+
+## The measurements are disposable, and the platform already treated them that way
+
+The question of what happens to stored data when this platform is parked has
+been outstanding since the first phase. It was deferred twice, deliberately,
+because until something held state worth keeping there was nothing to decide
+about. The metrics database is that something, so it is decided here.
+
+**The decision: the data is disposable. It is not snapshotted, not excluded
+from teardown, and not restored. Retention is twenty-four hours.**
+
+**What was found rather than assumed.** The intention had been to choose
+between three options — snapshot and restore, exclude the storage from
+teardown, or declare the data disposable. Inspecting the running cluster
+removed most of that choice:
+
+```
+volumeClaimTemplates   none
+PVCs cluster-wide      none
+the database volume    an empty directory belonging to the pod
+```
+
+There is no persistent storage anywhere in this platform. The collector's
+database lives in a directory that is created with its pod and deleted with
+it. So the premise behind the question was wrong in the platform's favour: the
+worry was that a teardown would destroy the history, when in fact a routine
+reschedule destroys it first, and has been doing so all along.
+
+That also exposed a number that was describing nothing. The chart's default
+retention is ten days. Ten days of retention over storage that cannot survive
+a pod moving between nodes is not a short history, it is a false one. It is
+now twenty-four hours, which is roughly the longest window this platform ever
+actually has, because the cluster itself is parked between sessions and no
+measurement can outlive the cluster that recorded it.
+
+**Rejected: snapshot the database and restore it on the way back up.** This is
+the option that sounds most responsible, and it is the one worth arguing
+against properly. A metrics history is exactly what you want across a release
+— the whole point of the next phase is comparing a new version against the
+behaviour of the old one, and that comparison is easier with yesterday's
+numbers than without them. Rejected because the comparison the next phase needs
+happens *within* a single release, over minutes, between two versions running
+at the same time. It never reaches back across a teardown. Building a snapshot
+and restore path would be machinery serving a need that has not been
+demonstrated, on a platform whose argument is that it installs less.
+
+**Rejected: exclude the storage from teardown so it survives.** Rejected on the
+platform's defining property. Everything here is rebuilt from what is committed,
+and a volume that outlives the cluster is the one object that could not be. It
+would also keep billing while the rest of the platform is parked precisely to
+stop it billing, which inverts the reason for tearing down at all.
+
+**Accepted cost, and it is a real one.** Every measurement in this document was
+taken from a cluster that no longer exists by the time anybody reads it. The
+numbers recorded while breaking both services on purpose — the probe traffic
+that was being counted as user traffic, the readiness failure that kept serving
+while the deploy wedged, the liveness failure that did not — are preserved only
+as text written down at the time. Nobody can re-run those queries. If a figure
+here is wrong, the evidence that would correct it is gone, and the only remedy
+is to rebuild the platform and break it again.
+
+A second cost: twenty-four hours is shorter than the interval between working
+sessions, so in practice the collector is almost always empty when work starts.
+The first question of any session cannot be answered from history, only from
+what happens next.
+
+## The nodes stay as they are, and the next phase gets the measurement instead
+
+The largest thing this platform installs was added in this phase, and the
+obvious next move is to make the cluster bigger, because the phase after this
+one brings a release controller and a second copy of a service. That move is
+declined.
+
+**What the cluster actually holds, counted rather than projected:**
+
+```
+kube-system       8        ceiling            34
+argocd            7        in use             28
+metrics           6        free                6
+external-secrets  3
+dev               2        memory requested   16% and 21% per node
+traefik           1        memory limits      46% and 47% per node
+staging           1        cpu limits         72% and 56% per node
+```
+
+Six slots free, against four predicted during design. The gap is worth keeping
+because it is a lesson about this platform's own shape rather than an
+arithmetic slip: the estimate counted the batch worker's pods as though they
+were always present. They are not. The worker exists for about thirty seconds
+in every ten minutes, so for most of any hour it occupies nothing at all, and
+a static count of the workloads overstates what it costs. At the moment a run
+is in flight in both environments the free figure is four, not six, and that
+peak is the number worth planning against.
+
+Memory was expected to be the binding constraint and is not: a fifth of each
+node is requested and under half is committed as limits. Processor limits are
+the tighter figure at seventy-two percent on one node, which is still not
+binding, but it is the number to watch next rather than memory.
+
+**Rejected: resizing now, because the next phase will need it.** The case is
+real. The next phase adds a release controller and runs a second copy of a
+service while traffic is being shifted, which is plausibly three or four pods
+against a peak headroom of four. Resizing now would avoid opening that phase
+with a disruptive change to a running cluster.
+
+It is declined because sizing against something that does not exist yet is
+guessing, and the guess is usually wrong in the expensive direction. The
+previous phase got this right by resizing against what it was actually adding
+and measuring the result, and this phase has just produced two reminders of why
+measurement beats projection: the pod estimate was out by two, and a figure
+written in this repository about pods consuming quota after they finish turned
+out, when checked, to be false.
+
+**Accepted cost.** The next phase probably opens with a node replacement, and
+replacing nodes under a running cluster is disruptive in a way that doing it
+now would not be. That cost is being moved rather than avoided, and moving it
+is only worth it because it buys a measurement in place of an estimate.
+
+A second cost, and the sharper one: peak headroom is four slots, which is at
+the lower end of what the next phase is likely to need. If it needs five, the
+discovery happens in the middle of that phase rather than at the start of this
+one, with a cluster already running the thing that needs the room.

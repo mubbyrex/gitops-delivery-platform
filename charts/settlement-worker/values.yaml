@@ -37,9 +37,18 @@ resources:
     cpu: 200m
     memory: 96Mi
 
-# How many finished runs to keep for inspection. Each kept run is a Pod object,
-# and Pod objects count against the namespace's pod quota even when finished,
-# so these numbers are a capacity decision as well as a retention one.
+# How many finished runs to keep for inspection.
+#
+# This previously said that each kept run counts against the namespace's pod
+# quota even after it finishes, and so was a capacity decision. That was
+# measured and it is not true: with eight pod objects in the namespace and six
+# of them finished, the quota reported two in use. A quota counts pods that are
+# still running, and a finished run holds a record rather than a place.
+#
+# They are still worth keeping small, for a different reason. These objects are
+# the durable record of what the runs did -- the service's own metrics die with
+# it, so the cluster's view of these Jobs is where run outcomes are actually
+# read from. Keeping three means the view can show three.
 history:
   successful: 3
   failed: 3

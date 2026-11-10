@@ -117,11 +117,26 @@ spec:
             ruleSelectorNilUsesHelmValues: false
             scrapeConfigSelectorNilUsesHelmValues: false
 
-            # Retention is left at the chart's default here on purpose. How
-            # long this data is kept, and what happens to it when the platform
-            # is parked, are one decision rather than two, and that decision
-            # belongs to the task that can observe the storage rather than to
-            # the task that creates it.
+            # Twenty-four hours, set explicitly rather than inherited.
+            #
+            # The chart's default is ten days, and on this platform that is a
+            # claim it cannot keep. Nothing here asks for persistent storage --
+            # there is no volume claim and no volume claim template, so the
+            # database lives in a directory that belongs to the pod and dies
+            # with it. Ten days of retention over storage that does not survive
+            # a reschedule is a number that describes nothing.
+            #
+            # The real limit is the cluster's own lifecycle. This platform is
+            # torn down between sessions on purpose, so no measurement can
+            # outlive the cluster that recorded it. A day is about the longest
+            # window that is ever actually available, and saying so in the
+            # configuration is more honest than inheriting a default that
+            # implies durability nobody provides.
+            #
+            # It also bounds the one resource that grows on its own: the
+            # collector holds recent data in memory, and that figure follows
+            # how much it is keeping.
+            retention: 24h
             resources:
               requests:
                 cpu: 100m
