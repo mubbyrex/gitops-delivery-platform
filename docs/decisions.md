@@ -1465,3 +1465,75 @@ A second cost: two of the four are read from the cluster's record rather than
 from the service, so they describe what the scheduler observed rather than what
 the code did. If a run exits zero while having done nothing at all, the record
 says it succeeded, and nothing here contradicts it.
+
+## The batch worker gets no push intermediary, because the cluster already knows
+
+A process that runs for half a minute and exits is the classic awkward case for
+a collector that asks on a timer. The standard remedy is well known: the job
+pushes its numbers to a component that stays running, and the collector reads
+that component instead. The question was whether this platform needs one.
+
+**What was actually observed.** The worker was given a scrape definition of its
+own and the collector was left to do its best, with a deliberately short
+interval to give it the best chance. It did catch runs. Of the four numbers the
+service exposes, three were present afterwards:
+
+```
+settlement_worker_build_info               1
+settlement_worker_items_processed_total    25
+settlement_worker_run_duration_seconds     0
+settlement_worker_runs_total               ABSENT
+```
+
+That is the worst possible result, and it is worse than collecting nothing.
+Three series exist, so the collection looks like it is working. But the two
+numbers that say whether the run was any good are the two that are useless: the
+outcome counter is absent entirely, because a labelled counter has no series
+until its label is first used and the outcome is only set as the run ends; and
+the duration reads zero, because it too is set at the end. Both are written in
+the last instant before the process exits and takes its endpoint with it.
+
+A partial reading that looks complete is the failure mode worth naming here.
+Nothing about that output announces itself as broken.
+
+**Why no intermediary was added anyway.** Because the facts are already
+recorded somewhere that does not disappear. A run leaves a Job object behind,
+and the chart keeps several of them on purpose; the cluster's own exporter
+reports on those, and was already installed. Asked for the same facts from that
+source, in the same cluster, at the same moment:
+
+```
+active runs                      0
+succeeded / failed jobs          2 / 0
+seconds since the last success   21
+last run duration                34
+```
+
+The duration is the one to look at twice. The pod's own gauge said zero. The
+cluster's record said thirty-four seconds, which is the truth. The information
+was never missing — it was being asked of the wrong thing.
+
+**Rejected: adding the push intermediary.** It is the textbook answer, it
+would work, and it would make the service's own numbers reachable, including
+the one distinction the cluster's record cannot make — a run that was
+interrupted part-way versus one that failed outright. Rejected because it
+would be a component installed, and a pod spent, to re-learn facts the platform
+already has. This repository's whole argument is that it supplies judgement
+rather than machinery, and installing machinery to duplicate an existing record
+is the clearest way to contradict that.
+
+**Accepted cost.** Interrupted and failed become the same thing. The service
+distinguishes them and the cluster does not, so a run stopped part-way through
+by a shutdown signal is recorded exactly like one that exited with an error.
+That distinction was deliberately built into the service and is now not
+observable, which is a real loss rather than a tidy one.
+
+A second cost: the indicators now describe what the scheduler saw, not what the
+code did. A run that exits zero having processed nothing is recorded as a
+success, and nothing here would contradict it.
+
+A third, smaller: the worker keeps a scrape definition that produces three
+series of limited use. It is kept rather than deleted because the partial
+reading is itself the evidence for this decision, and because the one thing it
+does supply — which version performed a run — is needed by the stage that
+releases two versions at once.
