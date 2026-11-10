@@ -1,0 +1,149 @@
+# The metrics stack: a collector, the operator that drives it, two exporters
+# that describe the cluster, and one place to look at the result.
+#
+# Wave zero, for the same reason the secrets operator is. This chart installs
+# the type definitions that describe a scrape target, and the objects that use
+# that type are committed inside the service charts in wave two. An instance
+# cannot be created before its type.
+#
+# One chart rather than four. The collector, the exporters and the views have
+# to agree with each other -- the collector has to know how to discover what
+# the exporters expose, and the views have to match the metric names the
+# exporters emit. Assembled by hand that is four charts, four applications and
+# four version numbers kept in step on every upgrade. This chart owns that
+# integration instead, and owning less of it is the point.
+#
+# The cost is that one version number now covers six components, so a problem
+# in any of them blocks all of them, and the installed footprint no longer
+# matches the chart's own documentation because of everything switched off
+# below.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    # A literal, as everywhere.
+    targetRevision: 92.17.0
+
+    helm:
+      values: |
+        # Nothing in this platform pages anybody yet, and a notification
+        # component with no destination configured is a component that looks
+        # like it is working. Switched off rather than installed and ignored.
+        # It is one pod, so this is also the difference between six pods and
+        # seven.
+        alertmanager:
+          enabled: false
+
+        # EKS does not expose the control plane. These scrape jobs are on by
+        # default because most clusters do expose it, and left on they produce
+        # targets that can never come up. A permanently failing target is worse
+        # than an absent one: it trains you to read "down" as normal, and the
+        # one real failure then looks like the others.
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+        kubeProxy:
+          enabled: false
+
+        grafana:
+          enabled: true
+          # The chart ships a large set of pre-built views describing node
+          # pressure, control plane latency and resource quotas. They are
+          # useful in general and none of them answers the question this
+          # platform needs answered, which is whether these two services are
+          # healthy. The views that do are committed separately.
+          defaultDashboardsEnabled: false
+          resources:
+            requests:
+              cpu: 25m
+              memory: 96Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        prometheus:
+          prometheusSpec:
+            # This is what makes collection a declaration rather than a
+            # configuration file. Left at its default, the collector only
+            # picks up scrape definitions carrying this chart's own release
+            # label, which would mean every new service had to be registered
+            # with the chart that installs the collector. Set to false, it
+            # picks up any such object in any namespace, so a new service
+            # brings its own definition with it and nothing central is edited.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            probeSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            scrapeConfigSelectorNilUsesHelmValues: false
+
+            # Retention is left at the chart's default here on purpose. How
+            # long this data is kept, and what happens to it when the platform
+            # is parked, are one decision rather than two, and that decision
+            # belongs to the task that can observe the storage rather than to
+            # the task that creates it.
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+
+        prometheusOperator:
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+
+        kube-state-metrics:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+        prometheus-node-exporter:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metrics
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # This chart ships twenty type definitions totalling 4.8 MB, the largest
+      # of them 857 KB on its own. Applying those the ordinary way records a
+      # copy of each in an annotation, and the annotation has a size limit well
+      # below that. Server-side apply has no such limit. The same fix as the
+      # routing definitions and the secrets operator, and this is by a wide
+      # margin the largest set of the three.
+      - ServerSideApply=true

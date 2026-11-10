@@ -1265,3 +1265,54 @@ A second cost: the two fetch methods are not guaranteed to serve byte-identical
 charts forever, and nothing here verifies that they do. The version is pinned
 and the registry reports a digest, but this project does not record that digest
 or check it, so the pin is trusted rather than enforced.
+
+## The metrics stack is one chart, with most of it switched off
+
+The collector, the operator that drives it, two exporters and the place you
+look at the result can be installed as one chart or as four. One chart was
+chosen, and then roughly a third of it was disabled, which looks contradictory
+enough to be worth setting out.
+
+The four components have to agree with each other. The collector has to know
+how to discover what the exporters expose; the views have to match the metric
+names the exporters emit. Assembling them by hand means owning that
+integration, and owning it on every upgrade, across four version numbers that
+move independently. The combined chart owns it instead. This platform's whole
+argument is that it supplies judgement rather than plumbing, and hand-wiring
+four components that ship pre-wired is plumbing.
+
+**Rejected: assembling from the separate charts.** Finer control over each
+piece and only what is wanted gets installed. Rejected because the control is
+over things this platform has no opinion about, while the cost — four pairs of
+versions to keep compatible — is paid at every upgrade by whoever is holding it
+then.
+
+**What is switched off, which is the part that carries the judgement.**
+
+Alert routing, because nothing here pages anybody yet. A notification component
+with no destination configured is worse than an absent one: it looks installed,
+it reports healthy, and it delivers nothing. It is also the difference between
+six pods and seven on a cluster with ten free slots.
+
+The scrape jobs for the control plane — scheduler, controller manager, etcd,
+proxy. These are on by default because most clusters expose those components.
+A managed cluster does not, so left on they produce targets that can never come
+up. That is the failure worth naming: a permanently failing target teaches you
+to read "down" as normal, and the one real failure then looks exactly like the
+four decorative ones.
+
+The bundled views, nearly all of them. They describe node pressure, control
+plane latency and resource quotas — genuinely useful, and none of them answers
+whether these two services are healthy, which is the only question this part of
+the platform exists to answer.
+
+**Accepted cost.** One version number now covers six components, so a problem
+in any one of them blocks an upgrade of the other five. That is a real loss of
+the control the rejected option would have given, and it will be felt on the
+first upgrade that matters rather than today.
+
+The second cost is less obvious and more likely to bite. What is installed no
+longer matches the chart's own documentation. Anyone reading upstream will find
+alerting, control plane dashboards and a set of views that are simply not here,
+and the only record of why is the values block and this entry. A reader who
+finds neither will reasonably conclude the installation is broken.
