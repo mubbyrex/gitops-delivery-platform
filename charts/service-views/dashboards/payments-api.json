@@ -1,7 +1,7 @@
 {
   "uid": "kestrel-payments-api",
   "title": "payments-api \u2014 is it healthy?",
-  "description": "Built from indicators chosen and written down before any threshold existed.",
+  "description": "Indicators chosen and written down before any threshold existed.",
   "schemaVersion": 39,
   "version": 1,
   "editable": false,
@@ -13,6 +13,7 @@
   "tags": [
     "kestrel-pay"
   ],
+  "timezone": "browser",
   "templating": {
     "list": [
       {
@@ -41,39 +42,53 @@
   },
   "panels": [
     {
-      "type": "text",
-      "title": "How to read this",
+      "type": "row",
+      "title": "Is it there?",
+      "collapsed": false,
       "gridPos": {
-        "h": 5,
-        "w": 8,
+        "h": 1,
+        "w": 24,
         "x": 0,
         "y": 0
       },
+      "panels": []
+    },
+    {
+      "type": "text",
+      "title": "How to read this",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
       "options": {
         "mode": "markdown",
-        "content": "The rate panels below **exclude the kubelet's health probes**. They did not at first, and that was wrong in a way worth knowing: probe traffic kept every number moving, so a service nobody was calling looked like it was serving requests, and a failing readiness probe looked like users getting errors.\n\nWith probes excluded, **zero traffic and a healthy service now do look identical** here. That is why *Targets up* is first: it answers whether the service is **there**, which is a different question from whether it is **succeeding**.\n\n- Up, no traffic \u2192 idle. Normal here.\n- Up, but *Rollout* shows updated below desired \u2192 a deploy is wedged while the previous version keeps serving. Nothing else on this page will move.\n- Not up \u2192 broken, regardless of what the rates show.\n\nNo panel declares a number too high. That is a release decision and it does not live here."
+        "content": "The rate panels **exclude the kubelet's health probes**. They did not at first, and that was wrong in a way worth knowing: probe traffic kept every number moving, so a service nobody was calling looked busy, and a failing readiness probe looked like users getting errors.\n\nWith probes excluded, **zero traffic and a healthy service look identical** below. That is why the row above comes first \u2014 it answers whether the service is *there*, a different question from whether it is *succeeding*.\n\n| what you see | what it means |\n|---|---|\n| up, no traffic | idle \u2014 normal here |\n| **targets above available** | a pod is running but not ready |\n| **updated below desired** | a deploy is wedged; the old version still serves |\n| available at zero | genuinely down |\n\nColour marks *category*, never severity. No panel declares a number too high \u2014 that is a release decision and it does not live here."
       }
     },
     {
       "type": "stat",
       "title": "Targets up",
-      "description": "Scrape targets answering. Zero means the service is unreachable, not quiet.",
+      "description": "Scrape targets answering. Can exceed available replicas: a not-ready pod is still scraped.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
+        "h": 4,
+        "w": 5,
         "x": 8,
-        "y": 0
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "text"
+            "fixedColor": "blue"
           },
+          "unit": null,
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -83,7 +98,7 @@
               }
             ]
           },
-          "decimals": 0
+          "mappings": []
         },
         "overrides": []
       },
@@ -96,8 +111,9 @@
           "values": false
         },
         "textMode": "auto",
-        "colorMode": "none",
-        "graphMode": "none"
+        "colorMode": "value",
+        "justifyMode": "center",
+        "graphMode": "area"
       },
       "targets": [
         {
@@ -106,7 +122,6 @@
             "uid": "prometheus"
           },
           "expr": "sum(up{job=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
-          "legendFormat": "",
           "refId": "A"
         }
       ]
@@ -114,23 +129,25 @@
     {
       "type": "stat",
       "title": "Replicas available",
-      "description": "The cluster's own view, so this still answers when the pod is not scrapeable.",
+      "description": "The cluster's own view, so this still answers when the pod cannot be scraped.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 12,
-        "y": 0
+        "h": 4,
+        "w": 5,
+        "x": 13,
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "text"
+            "fixedColor": "green"
           },
+          "unit": null,
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -140,7 +157,7 @@
               }
             ]
           },
-          "decimals": 0
+          "mappings": []
         },
         "overrides": []
       },
@@ -153,8 +170,9 @@
           "values": false
         },
         "textMode": "auto",
-        "colorMode": "none",
-        "graphMode": "none"
+        "colorMode": "value",
+        "justifyMode": "center",
+        "graphMode": "area"
       },
       "targets": [
         {
@@ -163,7 +181,6 @@
             "uid": "prometheus"
           },
           "expr": "sum(kube_deployment_status_replicas_available{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
-          "legendFormat": "",
           "refId": "A"
         }
       ]
@@ -177,17 +194,19 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 16,
-        "y": 0
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "text"
+            "fixedColor": "purple"
           },
+          "unit": null,
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -197,7 +216,17 @@
               }
             ]
           },
-          "decimals": 0
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "none",
+                  "index": 0
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -210,7 +239,8 @@
           "values": false
         },
         "textMode": "auto",
-        "colorMode": "none",
+        "colorMode": "value",
+        "justifyMode": "center",
         "graphMode": "none"
       },
       "targets": [
@@ -219,32 +249,33 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(count by (version) (payments_api_build_info{namespace=\"$namespace\"}))",
-          "legendFormat": "",
+          "expr": "count(count by (version) (payments_api_build_info{namespace=\"$namespace\"})) or vector(0)",
           "refId": "A"
         }
       ]
     },
     {
-      "type": "timeseries",
-      "title": "Requests by status",
-      "description": "Excludes the kubelet's health probes. Without that filter this panel reported the probe rate as if it were traffic, and a service nobody was calling looked busy.",
+      "type": "stat",
+      "title": "Container restarts",
+      "description": "Climbs when liveness fails. This is what separates a crash loop from a stalled deploy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
+        "h": 4,
+        "w": 8,
+        "x": 8,
         "y": 5
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "text"
+            "fixedColor": "orange"
           },
+          "unit": null,
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -254,9 +285,201 @@
               }
             ]
           },
-          "unit": "reqps"
+          "mappings": []
         },
         "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"$namespace\", container=\"payments-api\"}) or vector(0)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Replicas unavailable",
+      "description": "Desired minus available.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "unit": null,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(kube_deployment_status_replicas_unavailable{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Is it succeeding?",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by status",
+      "description": "Real requests only. Misses a request that returns success carrying wrong data.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "noValue": "no requests (probes excluded)"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "2.."
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "5.."
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "4.."
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -266,7 +489,7 @@
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -284,7 +507,7 @@
     {
       "type": "timeseries",
       "title": "Share of requests failing",
-      "description": "Real requests only. With probes included, a failing readiness probe showed here as a fifth of requests failing, which reads as users being served errors when no user was involved.",
+      "description": "Reads zero when nothing is being served at all. Read it beside Targets up.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -293,14 +516,14 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 10
       },
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "palette-classic"
           },
+          "unit": "percentunit",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -310,11 +533,43 @@
               }
             ]
           },
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "noValue": "0"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -324,7 +579,7 @@
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -333,7 +588,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\", status!~\"2..\"}[5m])) or vector(0)) / clamp_min(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\"}[5m])), 0.0001)",
+          "expr": "(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\", status!~\"2..\"}[5m])) or vector(0)) / clamp_min((sum(rate(payments_api_requests_total{namespace=\"$namespace\", path!~\"/healthz|/readyz\"}[5m])) or vector(0)), 0.0001)",
           "legendFormat": "failing share",
           "refId": "A"
         }
@@ -351,14 +606,14 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "palette-classic"
           },
+          "unit": "s",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -368,9 +623,57 @@
               }
             ]
           },
-          "unit": "s"
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "p50"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -380,7 +683,7 @@
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -407,7 +710,7 @@
     {
       "type": "timeseries",
       "title": "Rollout",
-      "description": "Desired against updated and available. A readiness failure does not take the service down -- the previous version keeps serving -- so nothing else on this page moves much. This is where a wedged deploy becomes visible: updated falls below desired and stays there.",
+      "description": "A readiness failure does not take the service down -- the previous version keeps serving -- so nothing else moves much. This is where a wedged deploy becomes visible.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -416,13 +719,14 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
+          "unit": null,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -431,9 +735,73 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "desired"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "updated"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "available"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -443,7 +811,7 @@
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -452,27 +820,27 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "refId": "A",
+          "expr": "max(kube_deployment_spec_replicas{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
           "legendFormat": "desired",
-          "expr": "max(kube_deployment_spec_replicas{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "refId": "B",
+          "expr": "max(kube_deployment_status_replicas_updated{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
           "legendFormat": "updated",
-          "expr": "max(kube_deployment_status_replicas_updated{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
+          "refId": "B"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "refId": "C",
+          "expr": "max(kube_deployment_status_replicas_available{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)",
           "legendFormat": "available",
-          "expr": "max(kube_deployment_status_replicas_available{deployment=\"payments-api\", namespace=\"$namespace\"}) or vector(0)"
+          "refId": "C"
         }
       ]
     }
