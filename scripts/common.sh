@@ -8,6 +8,31 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_DIR="$REPO_ROOT/terraform/cluster"
 PLATFORM_DIR="$REPO_ROOT/terraform/platform"
 
+# The delivery controller's chart comes from a public container registry, and
+# public means no credential is required to read it. The Helm machinery inside
+# the Terraform provider does not know that: it reads this machine's registry
+# logins and sends whichever one matches the host. A login that has expired, or
+# that belongs to an identity without read access to that particular package,
+# turns a pull that would have succeeded anonymously into "403 denied".
+#
+# That has stopped a bring-up once. The operator legitimately pushes images to
+# the same registry, so "stay logged out" is not a fix — the credential will
+# come back, and the failure with it.
+#
+# So Terraform is pointed at an empty credential store belonging to the
+# repository instead of to the machine. This is the same reasoning, and the
+# same remedy, as keeping the Helm repository configuration inside the module:
+# what this platform installs should depend only on what is committed here.
+#
+# Note that the provider's own registry_config_path does not cover this. Helm's
+# registry client falls back to the machine's container-registry credentials
+# regardless of that setting, which is why the environment is what has to
+# change.
+DOCKER_CONFIG="$PLATFORM_DIR/.docker"
+mkdir -p "$DOCKER_CONFIG"
+printf '{}' > "$DOCKER_CONFIG/config.json"
+export DOCKER_CONFIG
+
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
 die()  { printf '\nerror: %s\n' "$*" >&2; exit 1; }

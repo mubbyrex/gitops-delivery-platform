@@ -1257,7 +1257,12 @@ a static web host, and registries require a token even for anonymous pulls.
 That added a failure mode immediately: a stale credential for the same registry
 sitting in the local Docker configuration caused the pull to be refused with
 `403 denied`, where no credential at all succeeds. The catalogue it replaced had
-no auth step and so could not fail that way. The trade is a slow dependency
+no auth step and so could not fail that way. It then did exactly that a second
+time, on a bring-up, which is what settled how it had to be handled: the
+lifecycle scripts now point Terraform at an empty credential store belonging to
+the repository rather than to the machine. Telling the operator to stay logged
+out was not a fix, because the operator legitimately pushes images to that same
+registry and the credential returns. The trade is a slow dependency
 that failed often for a fast one that fails differently, and the new failure is
 confusing the first time because being logged in is what breaks it.
 
