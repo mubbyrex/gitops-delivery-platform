@@ -67,13 +67,40 @@ spec:
           # platform needs answered, which is whether these two services are
           # healthy. The views that do are committed separately.
           defaultDashboardsEnabled: false
+          # 256Mi here was a guess and it was wrong: the container was
+          # OOM-killed twice before it finished starting. Raised against the
+          # node's actual headroom rather than to a rounder number -- committed
+          # requests were fifteen and twenty-one percent of the two nodes, so
+          # this is affordable where it might not have been.
           resources:
             requests:
               cpu: 25m
-              memory: 96Mi
+              memory: 128Mi
             limits:
               cpu: 200m
-              memory: 256Mi
+              memory: 512Mi
+
+          # This pod is three containers, not one. The block above reaches only
+          # the first; the two sidecars that watch for dashboards and data
+          # sources had no limits at all, which is how the pod came to be
+          # bounded in one place and unbounded in two.
+          sidecar:
+            dashboards:
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 48Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+            datasources:
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 48Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
 
         prometheus:
           prometheusSpec:
