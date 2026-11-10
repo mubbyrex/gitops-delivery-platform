@@ -1196,3 +1196,72 @@ introduces storage for a reason — the metrics database in the next stage, whos
 contents are the record of how these services behaved. Asking it there means
 asking it about state with a purpose instead of state invented to carry the
 question.
+
+## The controller's chart is fetched from a registry, not from a catalogue
+
+Installing the delivery controller means fetching its chart, and a chart can be
+fetched two ways. An HTTP chart repository publishes `index.yaml`, a catalogue
+of every version of every chart the project ships; the client downloads the
+whole catalogue and searches it for the one entry it wants. An OCI registry is
+addressed per chart per version, so the request names the thing it wants and
+gets only that.
+
+For most projects the difference is invisible, and it was invisible here for
+three phases. The catalogue is 1.68 megabytes against a chart of 236 kilobytes,
+so seven eighths of every fetch was catalogue — but while the connection held
+up, seven eighths of a fast transfer is still a fast transfer.
+
+What exposed it was not a change in this repository. Nothing here that resolves
+a chart had been touched in three weeks. It was the connection getting
+unreliable, and measuring it is what made the decision obvious rather than
+reactive. Five fetches of the catalogue: two never finished, timing out at 90
+and 180 seconds, and the three that did took 15, 32 and 45 seconds. Throughput
+ranged from 8 to 110 kilobytes a second. Three fetches of the same chart over
+OCI took 4, 10 and 10 seconds.
+
+That is the real shape of the problem. The catalogue was never reliably fast;
+it was fast often enough that three phases of bringing this platform up and
+down never landed on the bad end of the distribution. Twice in two days it
+landed there, once installing and once destroying. The transfer sits on the
+wrong side of the provider's timeout often enough to be a defect, and it was
+always going to.
+
+The failure appeared first on the way down and then on the way up, which is
+what made it worth a decision rather than a retry. The same resolution happens
+during `destroy`, and a destroy that cannot resolve a chart stops partway with
+the cluster still running and still billing. A fetch that can fail open is an
+annoyance during install and a cost leak during teardown.
+
+**Rejected: raise the provider timeout.** The obvious move, and it does not
+work. At the observed rate the catalogue needs four minutes on a good day and
+the rate is not stable, so the timeout becomes a number that is either too
+small to help or too large to fail usefully. It also treats a slow transfer as
+the problem, when the problem is transferring a catalogue at all.
+
+**Rejected: suppress the refresh on destroy and leave install alone.** This was
+in fact the first fix, and it is why the second failure was a surprise rather
+than a repeat. It worked, narrowly: `destroy` no longer re-resolved the chart.
+But it fixed one direction of a problem that had two, and it bought that by
+planning a destroy from unrefreshed state, which is a real cost paid for a
+partial repair.
+
+**Rejected: vendor the chart into the repository.** Removes the network from
+the path entirely, and genuinely tempting. Rejected because the pinned version
+is the interface here — upgrading the controller is meant to be an edit to one
+variable, reviewable as one line. A vendored chart makes an upgrade a few
+thousand lines of imported YAML, and the thing that is supposed to be easy to
+audit becomes the thing nobody reads.
+
+**Accepted cost.** The install now depends on a container registry rather than
+a static web host, and registries require a token even for anonymous pulls.
+That added a failure mode immediately: a stale credential for the same registry
+sitting in the local Docker configuration caused the pull to be refused with
+`403 denied`, where no credential at all succeeds. The catalogue it replaced had
+no auth step and so could not fail that way. The trade is a slow dependency
+that failed often for a fast one that fails differently, and the new failure is
+confusing the first time because being logged in is what breaks it.
+
+A second cost: the two fetch methods are not guaranteed to serve byte-identical
+charts forever, and nothing here verifies that they do. The version is pinned
+and the registry reports a digest, but this project does not record that digest
+or check it, so the pin is trusted rather than enforced.

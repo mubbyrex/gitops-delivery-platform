@@ -104,10 +104,24 @@ resource "kubernetes_namespace_v1" "argocd" {
 resource "helm_release" "argocd" {
   name = "argo-cd"
 
-  repository = "https://argoproj.github.io/argo-helm"
-  chart      = "argo-cd"
-  version    = var.argocd_chart_version
-  namespace  = kubernetes_namespace_v1.argocd.metadata[0].name
+  # Pulled from the chart's OCI registry rather than the project's HTTP chart
+  # repository. Both serve the same chart at the same version; what differs is
+  # how much has to be fetched to find it.
+  #
+  # An HTTP chart repository has no way to address a single chart. The client
+  # downloads index.yaml -- a catalogue of every version of every chart the
+  # project publishes -- and searches it. For this project that index is
+  # approaching two megabytes, and it has twice failed to transfer inside the
+  # provider's timeout: once installing, once destroying. An OCI registry is
+  # addressed per chart per version, so this fetch carries one chart and needs
+  # no catalogue at all.
+  #
+  # The destroy path is the reason this matters more than it looks. A destroy
+  # that cannot resolve a chart stops with the cluster still running and still
+  # billing, which is the opposite of what tearing it down is for.
+  chart     = "oci://ghcr.io/argoproj/argo-helm/argo-cd"
+  version   = var.argocd_chart_version
+  namespace = kubernetes_namespace_v1.argocd.metadata[0].name
 
   # The namespace above already exists by the time this runs, and letting the
   # release create one as well would give two owners to the same object.

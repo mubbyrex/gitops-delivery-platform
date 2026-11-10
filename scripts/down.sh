@@ -17,19 +17,17 @@ started=$(date +%s)
 
 if [ "$(state_count "$PLATFORM_DIR")" -gt 0 ]; then
   say "Removing the delivery controller"
-  # -refresh=false is deliberate, and it is the difference between a
-  # teardown that works when the internet is slow and one that does not.
+  # This refreshes, which means it re-resolves the controller's chart before
+  # deleting it. That was briefly suppressed with -refresh=false, because
+  # re-resolving meant downloading a two-megabyte chart catalogue and the
+  # download was slow enough to stop the teardown outright.
   #
-  # Refreshing a Helm release re-resolves its chart, which means fetching
-  # the index from the chart's upstream repository. On a destroy that is
-  # work done to describe something a moment before deleting it, and it
-  # makes tearing this platform down depend on a third party being both
-  # reachable and quick. It failed exactly that way once: the index was
-  # served, slowly enough to exceed the provider's timeout, and the
-  # teardown stopped with every billable resource still running.
-  #
-  # Everything needed to delete these resources is already in state.
-  terraform -chdir="$PLATFORM_DIR" destroy -auto-approve -input=false -refresh=false \
+  # The suppression is gone because the cause is. The chart is now fetched
+  # from a registry per version rather than by searching a catalogue, so the
+  # resolution is seconds and refusing to refresh buys nothing. It did cost
+  # something: a destroy planned from unrefreshed state assumes state still
+  # describes reality, and on a teardown that is exactly when it might not.
+  terraform -chdir="$PLATFORM_DIR" destroy -auto-approve -input=false \
     -var "cluster_name=$CLUSTER_NAME"
 else
   say "Delivery controller: nothing in state, skipping"
