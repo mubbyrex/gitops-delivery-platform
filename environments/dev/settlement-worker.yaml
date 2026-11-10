@@ -10,7 +10,7 @@ schedule: "*/5 * * * *"
 version: "dev"
 
 image:
-  digest: sha256:7e162871c735eb8c2e900ce3551d141dcf81e587190969c7e12a5cec8160dedd  # built from cb928f1d12f7
+  digest: sha256:77985657398ac57968bde3421d9d23cc8129cbb3457407be8e7bc33166454385  # built from 0154a5299bd6
 
 # Shorter than the gap to the next run, so that normal operation does not
 # constantly exercise the overlap path. Making a run outlast its schedule is
