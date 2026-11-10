@@ -1321,3 +1321,71 @@ longer matches the chart's own documentation. Anyone reading upstream will find
 alerting, control plane dashboards and a set of views that are simply not here,
 and the only record of why is the values block and this entry. A reader who
 finds neither will reasonably conclude the installation is broken.
+
+## What says the request-serving API is healthy, and what it cannot say
+
+Three numbers, and they are the ordinary ones, because this service is the
+ordinary shape: a process that accepts requests and answers them. How many
+requests arrive, how many of them failed, and how long they took. The service
+exposes exactly these already — a request counter labelled by path and status,
+and a duration histogram labelled by path — so nothing had to be added to it to
+make this answerable.
+
+Each of the three, and the failure each one is blind to.
+
+**Requests, counted by status.** The rate of requests whose status indicates
+failure, against the rate overall. This is the closest thing to a direct answer:
+if failures are climbing while the total is flat, something broke and callers
+are seeing it. What it misses is a request that succeeds and is wrong — a
+response with a status indicating success carrying the wrong amount. Nothing
+here can see that, and nothing in this platform ever will, because the service
+is a stub with no amounts in it.
+
+**Request duration.** A distribution rather than an average, so that a minority
+of slow responses is visible instead of being flattened by a majority of fast
+ones. What it misses is the request that never finishes at all. A response that
+hangs until the caller gives up is never recorded as a duration, so the number
+can improve at the exact moment the service becomes unusable — the slow
+requests leave the sample by failing to complete.
+
+**Build info.** On its own this says nothing about health; it is always one.
+It matters because its label carries the version, and the next stage runs two
+versions at once on purpose. Without it, the three numbers above describe a
+service rather than a version of one, and "the new version is failing" is not a
+sentence the data can form. What it misses is everything else: it is an
+attribution key, not an indicator.
+
+**The uncomfortable part, which is the reason this entry exists.**
+
+All three read zero when nobody is calling the service. No requests, no
+failures, no durations. A service that is perfectly healthy and idle produces
+the same numbers as a service that is unreachable, crash-looping, or gone — and
+on a platform with no real users, idle is the normal state.
+
+So the numbers above are not sufficient on their own and are not treated as
+such. Whether the service is *there* is a separate question from whether it is
+*succeeding*, answered by whether its pods report ready, which the cluster
+reports and the collector already gathers. The two have to be read together.
+Ready with no traffic is idle. Not ready is broken. Traffic with failures is
+broken differently. Any view that shows only the three numbers lets the second
+of those masquerade as the first.
+
+**Deliberately absent: any threshold.** No number here is declared too high.
+What counts as too many failures, or too slow, is a release decision, and
+choosing it now would mean choosing it before anything exists that has to act
+on it. The predictable way that goes wrong is that the number gets picked to
+make a release pass rather than to describe the service.
+
+**Rejected: adding a metric that is non-zero while idle.** A heartbeat counter
+would remove the zero-means-two-things problem at the source, and it was
+tempting for exactly that reason. Rejected because the service is a stub whose
+metrics were chosen when it was written, and changing it to make a view easier
+to read is adding logic to a service to serve a dashboard. If a metric is only
+needed because the collection is awkward, the collection is what is wrong.
+
+**Accepted cost.** Answering "is it healthy" for this service takes two sources
+rather than one — its own metrics plus the cluster's view of its pods — and
+anybody reading only the first will misread an idle service as a working one
+and a dead one as idle. That ambiguity is not solved here. It is marked, and
+the view is built so the readiness signal sits beside the other three rather
+than on a separate page.
