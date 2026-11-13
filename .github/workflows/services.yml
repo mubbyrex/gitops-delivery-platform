@@ -19,9 +19,10 @@ on:
   push:
     branches: [main]
     paths:
+      # Source only. A chart is not source: changing it changes how the image
+      # is run, not what is in it, and the delivery controller applies that
+      # straight from this repository without an image being rebuilt.
       - 'services/**'
-      - 'charts/payments-api/**'
-      - 'charts/settlement-worker/**'
       - '.github/workflows/services.yml'
   # Manual runs, for publishing the first image before any source has changed.
   workflow_dispatch:
@@ -79,9 +80,14 @@ jobs:
           # is about this one. Without this, editing one service republishes
           # the other with a new digest, and an unchanged service would get a
           # release it did not earn.
+          #
+          # Only the source counts. This used to include the service's chart,
+          # and that was wrong twice over: a chart edit does not change the
+          # image, and because the build is not reproducible, rebuilding from
+          # identical source hands back a different digest. Editing a comment
+          # in a values file therefore published a new image and deployed it.
           if git diff --quiet HEAD^ HEAD -- \
-               "services/${{ matrix.service }}" \
-               "charts/${{ matrix.service }}"; then
+               "services/${{ matrix.service }}"; then
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
