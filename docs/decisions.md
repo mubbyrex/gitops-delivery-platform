@@ -1675,3 +1675,80 @@ A second cost, and the sharper one: peak headroom is four slots, which is at
 the lower end of what the next phase is likely to need. If it needs five, the
 discovery happens in the middle of that phase rather than at the start of this
 one, with a cluster already running the thing that needs the room.
+
+---
+
+## A third node, bought against a measured peak rather than a projected one
+
+**Context.** The previous phase closed by warning that peak headroom was four
+slots and that five would be discovered mid-phase. It was.
+
+The numbers, read from a running cluster rather than recalled. Each node of the
+current size has a hard ceiling of seventeen pods, so the pair offers
+thirty-four. Twenty-eight are occupied with nothing scheduled running. A batch
+run in one environment makes twenty-nine, measured by catching one in flight.
+The scheduled jobs in the two environments coincide at the top of every hour,
+and each contributes a single pod, so the fullest the cluster ever gets today
+is thirty — four free.
+
+Progressive delivery adds three things to that. A release controller, which its
+chart renders as two replicas. A source of traffic, because an error rate
+computed over no requests is not a measurement. And a second copy of the
+service while traffic is being shifted to it, which on two replicas is one more
+pod. Against four free slots that is thirty-four of thirty-four: exactly full,
+with no room for anything to be rescheduled.
+
+**Decision.** The controller runs a single replica, and the node group grows
+from two nodes to three of the same size.
+
+**Why the controller is one replica.** Two is a high-availability default, and
+high availability of the release controller is not a property this platform
+demonstrates or needs. It is one cluster, torn down between sessions, and the
+progress of a release is recorded in the rollout object rather than in the
+controller's memory, so a controller that restarts mid-release resumes rather
+than loses it. Running two would be paying for a property the platform does not
+claim.
+
+**Why a third node is still needed after that.** One replica brings the worst
+moment to thirty-three of thirty-four. A single free slot is not headroom. It
+is also not evenly distributed: the two nodes were carrying fifteen and
+fourteen of seventeen when this was measured, so a slot free on paper may be
+free on the wrong node.
+
+**Rejected: two larger nodes instead of three of this size.** The previous
+sizing decision chose exactly this, and rejected a third node on the grounds
+that per usable slot it was the worse buy. That reasoning was correct then and
+does not apply now. Then, both options were marginal — thirty-three slots
+against thirty-four — so the only thing separating them was cost per slot.
+Now the smaller option is comfortably sufficient and the larger one is roughly
+double what is needed, so absolute cost decides instead. The larger pair also
+replaces both nodes under a running cluster, where adding a node does not
+disturb anything already placed.
+
+**Rejected: changing nothing and accepting one free slot.** The demonstration
+this phase exists to produce runs for several minutes, and the batch job in one
+environment runs every five, so a release and a batch run will overlap rather
+than might. A batch pod that cannot be placed does not fail loudly; it waits,
+or its run is skipped, and the indicator the previous phase chose for exactly
+that situation starts climbing in the middle of a release that is supposed to
+be the thing under observation. Saving four cents an hour by corrupting the
+measurement is the wrong trade.
+
+**Rejected again: raising the per-node address limit instead of the node
+count.** Still the right answer for a cluster that is not a reference platform,
+still rejected for the reasons recorded when the nodes were last resized, and
+still the production answer. Nothing has changed to make it cheaper.
+
+**Accepted cost.** Running cost rises from about $0.235 to about $0.277 an
+hour, roughly eighteen percent, for capacity that is occupied for about a
+minute in every hour. The whole case for it rests on the worst moment rather
+than the usual one.
+
+The new node is also not worth seventeen slots. Each node arrives already owing
+four pods to agents that run on every node — networking, service proxy,
+identity, and the metrics exporter added last phase — so seventeen gross is
+thirteen net. That figure is itself a correction: the last time this was
+written down the per-node debt was three, and observability made it four
+without the earlier entry being revisited. Per usable slot, this is knowingly
+the worse purchase of the two on offer, bought because the cheaper total was
+the one that mattered.

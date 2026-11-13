@@ -57,9 +57,9 @@ variable "node_instance_type" {
 }
 
 variable "node_count" {
-  description = "Number of nodes in the managed node group. Two rather than one so that workloads have somewhere to express anti-affinity and disruption budgets, neither of which means anything on a single node."
+  description = "Number of nodes in the managed node group. Two is the floor, so that workloads have somewhere to express anti-affinity and disruption budgets, neither of which means anything on a single node. Three because a progressive release runs a second copy of a service alongside the first, and the measured peak left one free slot of thirty-four once a rollout controller, a load source and a canary copy were counted against a cluster that already runs two scheduled jobs at the top of every hour. A third node of the same size was chosen over two larger ones because the shortfall is a handful of slots rather than a doubling, and each node arrives already owing four pods to per-node agents."
   type        = number
-  default     = 2
+  default     = 3
 
   validation {
     condition     = var.node_count >= 2

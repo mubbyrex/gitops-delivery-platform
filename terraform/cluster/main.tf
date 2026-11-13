@@ -205,6 +205,23 @@ module "eks" {
       # count purely so a node group update can bring a replacement up
       # before taking the old node away, rather than running a node short
       # while it rolls.
+      #
+      # These three numbers are set together when the group is created, and
+      # after that only two of them are still ours. The module ignores later
+      # changes to the desired size, on the assumption that something inside
+      # the cluster scales the group. Nothing here does, so on an existing
+      # group the desired size is owned by nobody and cannot be moved from
+      # this file at all.
+      #
+      # That makes growing a live group a two-step operation rather than an
+      # edit here, because the cloud rejects a floor above the desired size.
+      # Raising this count alone fails: the plan plausibly shows the floor
+      # and the ceiling moving, and the update is refused. The desired size
+      # has to be raised first, outside this configuration and within the
+      # current ceiling, and only then does applying this agree with it.
+      #
+      # None of that applies to building a cluster from nothing, where all
+      # three are set at creation and the count here is simply the count.
       min_size     = var.node_count
       desired_size = var.node_count
       max_size     = var.node_count + 1

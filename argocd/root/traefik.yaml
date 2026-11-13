@@ -50,7 +50,7 @@ spec:
             # spend that no cost report will ever attribute.
             service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: "Project=kestrel-pay-platform,Environment=dev"
 
-        # Two small nodes with a pod ceiling do not have room to spare. One
+        # Two nodes with a pod ceiling do not have room to spare. One
         # replica is honest for a platform that is torn down nightly; a real
         # deployment would run more and say why.
         deployment:
