@@ -1,4 +1,5 @@
-# Defaults only. Every environment overrides what it needs in
+# Defaults only. Editing this file changes how the image runs, not what is in
+# it, so it does not rebuild or republish anything. Every environment overrides what it needs in
 # environments/<env>/payments-api.yaml, and nothing that differs between
 # environments belongs here.
 
