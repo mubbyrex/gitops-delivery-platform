@@ -1,0 +1,110 @@
+# The release controller.
+#
+# This is the piece that makes a release a sequence rather than a replacement.
+# It owns a resource type that stands in for a deployment, and while a new
+# version is being introduced it keeps two sets of pods alive at once and
+# decides how much traffic each gets.
+#
+# Wave zero, for the same reason the secrets operator is in wave zero: the
+# types it installs are the types the services in wave two become instances
+# of. An instance cannot be created before its type exists.
+#
+# Nothing in this file mentions the batch worker, and nothing later will. Two
+# versions of that workload running at once is the hazard this whole platform
+# is arranged to prevent, and running it alongside itself is precisely what
+# the mechanism below does. Its safety is a different mechanism entirely.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # A catalogue rather than a registry, which looks like a contradiction of
+    # the decision taken when the delivery controller's own chart moved the
+    # other way, and is not. That decision was about the provisioning tool
+    # running on an operator's laptop, where a 1.68 megabyte catalogue sat on
+    # the wrong side of a timeout and could strand a teardown half-done. This
+    # fetch is made by a component inside the cluster, on a datacentre
+    # connection, with a cache that outlives any one sync, and it cannot
+    # strand anything. Addressing the same chart by registry here would also
+    # mean registering credentials as a stored object, and the set of objects
+    # owned outside the delivery controller is deliberately not growing.
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-rollouts
+    # A literal, as everywhere. The chart and the controller it installs are
+    # versioned together by the project, so this one string pins both.
+    targetRevision: 2.43.12
+
+    helm:
+      values: |
+        # Stated rather than inherited. Whether a chart installs its own type
+        # definitions decides whether anything has to be sequenced around it,
+        # and here five types arrive with the controller rather than from a
+        # separate source.
+        installCRDs: true
+
+        # Also stated rather than inherited, because the alternative silently
+        # breaks the thing this is for. Namespaced mode would confine the
+        # controller to its own namespace, and every workload it has to drive
+        # lives in a different one.
+        clusterInstall: true
+
+        controller:
+          # One, against a chart default of two.
+          #
+          # Two replicas buys high availability of the release controller,
+          # which is not a property this platform claims. It is a single
+          # cluster that is torn down between sessions, and the progress of a
+          # release is written in the rollout object rather than held in the
+          # controller's memory, so a controller that restarts part-way
+          # through picks the release back up instead of losing it. The
+          # measured budget made the saving worth taking: before a third node
+          # was added, two replicas did not fit at all.
+          replicas: 1
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            # Set against the headroom actually free on a node rather than
+            # against a guess at what this needs, which is the opposite of how
+            # the last component's limit was chosen and the reason it was
+            # killed twice before it finished starting. The real figure is
+            # measured once this is running and the limit revisited then.
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+        # The controller ships a web interface for watching a release. It is
+        # off by default and stays off: it costs a pod on a cluster where pods
+        # are the scarce resource, and every observation this phase has to
+        # make is required to come from somewhere that outlives the session.
+        # A screen somebody had open is not evidence.
+        dashboard:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # No server-side apply here, deliberately, though the two other
+      # type-bearing applications in this directory both use it. Their reason
+      # is size: a type definition large enough that recording a copy of it in
+      # an annotation blows the 262144-byte ceiling on that annotation. These
+      # five were measured rather than assumed to be the same case, and the
+      # largest of them is 69 kilobytes once encoded the way that annotation
+      # encodes it. Reaching for it by analogy would have been a setting
+      # carried over for a reason that does not apply.

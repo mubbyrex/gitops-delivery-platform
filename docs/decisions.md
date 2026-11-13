@@ -1752,3 +1752,74 @@ written down the per-node debt was three, and observability made it four
 without the earlier entry being revisited. Per usable slot, this is knowingly
 the worse purchase of the two on offer, bought because the cheaper total was
 the one that mattered.
+
+Measured after the change rather than predicted. Fifty-one slots, thirty-two
+occupied at rest, nineteen free. The new node arrived owing exactly the four
+per-node agents the estimate assumed, so the predicted fourteen free at the
+worst moment stands. The three nodes carry fifteen, thirteen and five, because
+nothing already placed moves to a node that appears later; the imbalance
+resolves itself only as pods are replaced, which is worth knowing before
+reading anything into it.
+
+The two-step shape of the change was not predicted and is the part worth
+keeping. Raising the count in configuration was refused outright: the module
+stops managing the desired size once the group exists, on the assumption that
+something inside the cluster scales it, and nothing here does. So the floor and
+the ceiling are all that configuration still controls, and the cloud will not
+accept a floor above a desired size it has been told to leave alone. Growing a
+live node group therefore takes a change outside the configuration followed by
+one inside it. Building the same cluster from nothing never meets this, which
+is exactly why it was not noticed until a running cluster had to grow.
+
+---
+
+## Two settings the release controller does not copy from its neighbours
+
+Both look like oversights against the applications sitting beside it in the
+same directory, and both are deliberate. Recording them because the next
+person to read that file will reach for consistency, which is usually the
+right instinct and is wrong twice here.
+
+**The chart is fetched from a catalogue, not a registry.** The opposite was
+decided a phase ago, measured, and written down. It still holds where it was
+taken and it does not reach here.
+
+That decision was about the provisioning tool, running on an operator's
+machine, fetching a chart over whatever connection that machine has. A 1.68
+megabyte catalogue sat on the wrong side of a timeout, and the failure that
+made it urgent was a teardown stopping half-finished with a cluster still
+billing. None of those conditions describe this fetch. It is made by a
+component inside the cluster on a datacentre connection, it is cached beyond
+any single synchronisation, and a slow fetch delays a release rather than
+stranding a teardown.
+
+**Rejected: addressing it by registry anyway, for consistency.** Tempting,
+and it would read better. Rejected on two grounds. The first is that the
+registry path for this component is not documented as working without a stored
+credential object for the version running here, and the number of objects that
+exist outside the delivery controller's management is deliberately fixed at
+three. The second is worse: copying a decision to a place where its reasoning
+does not apply makes the original reasoning harder to trust, because a reader
+who checks will find the measurement describes a situation that is not this
+one.
+
+**No server-side apply, where the two other type-bearing applications both use
+it.** Their reason is size. A type definition can be large enough that
+recording a copy of it in an annotation exceeds the 262144-byte ceiling on
+that annotation, and server-side apply keeps no such copy.
+
+The expectation was that five definitions of roughly a quarter of a megabyte
+each would be the same case, and the setting was about to be carried across on
+that basis. Measuring it first gave the opposite answer. The annotation holds
+the object encoded compactly rather than as the indented text a human reads,
+and the largest of these five is 69 kilobytes that way against 237 kilobytes on
+disk. All five are comfortably clear of the ceiling.
+
+**Accepted cost.** Two applications in one directory now do the same kind of
+thing two different ways, and the file has to carry the reason in a comment or
+the next change will quietly unify them. The cost of the second is narrower and
+real: client-side apply does store a redundant copy of every one of these five
+definitions, which is waste that server-side apply would avoid. It is accepted
+because the setting exists here to prevent a failure, that failure was measured
+not to apply, and switching it on for tidiness would mean the next person
+cannot tell which of the three applications turned it on for a reason.
