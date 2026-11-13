@@ -272,6 +272,130 @@ that consistently overruns pushes each subsequent run later until one finally
 exceeds the lateness allowance and is genuinely dropped. The cost is drift
 rather than loss, and neither condition is alarmed on yet.
 
+## Is it healthy? Where the answer comes from
+
+A collector runs in the cluster, gathers numbers from both services, and keeps
+them for a day. There is one place to look per service, and each is built from
+indicators that were chosen and written down before any of them had a number
+attached.
+
+**What is scraped is declared next to the thing it describes**, not listed in a
+file the collector is configured with. Each service's chart carries its own
+scrape definition, so adding a third service later is a file in that service's
+chart rather than an edit to something central that nobody remembers owns the
+list. The collector is installed with its selectors left empty, which is what
+makes that sufficient: it picks up any such definition in any namespace rather
+than only the ones belonging to its own release.
+
+### The two services need different answers, and one of them is not its own
+
+The request-serving API is the familiar shape, so the familiar numbers apply:
+how many requests, how many failed, how long they took. Those come from the
+service itself.
+
+The batch worker cannot be asked the same way, and finding out why changed
+where its numbers come from. It exposes a run outcome and a run duration, and
+both are written in the instant before the process exits. Scraping a live run
+returns neither: the outcome counter has no series yet, because a labelled
+counter has none until its label is first used, and the duration still reads
+zero. Then the process exits and takes its endpoint with it.
+
+Measured against a real run, the service reported a duration of **0** while the
+cluster's record of the same run reported **34 seconds**. The information was
+never missing. It was being asked of the wrong thing.
+
+So the worker's indicators are read from the cluster's record of its runs,
+which outlives the pod that did the work, and the service's own metrics are a
+supplement. That is the inverse of how the API is measured, and the inversion
+is not a preference — it follows from one process staying still and the other
+not.
+
+The standard remedy for a short-lived job is to have it push its numbers to a
+component that stays running. That was considered and declined: the facts are
+already recorded in the cluster, and installing something to re-learn them
+would be machinery serving a need that has not been demonstrated. The cost is
+that a run interrupted part-way and a run that failed outright become the same
+thing, because the cluster does not draw a distinction the service does.
+
+### The indicator that catches a failure nothing else can
+
+For the worker, the number read first is **how long since a run last
+succeeded**, compared against how often runs are due.
+
+Counters move when something happens. Nothing moves when nothing happens — so a
+worker that silently stops being scheduled produces no failures, no errors and
+no change in any total. The numbers simply stop, and a stopped number is
+indistinguishable from a quiet one. Elapsed time since the last success is the
+only indicator here that treats absence as a signal, and absence is this
+workload's most likely silent failure.
+
+### Idle must not look like healthy, and once it did
+
+Every rate the API exposes reads zero when nobody is calling it, so a perfectly
+healthy idle service produces the same numbers as one that is unreachable or
+gone. That is why the first thing on its view is whether the service is
+*there* — scrape targets answering, and replicas the cluster considers
+available — which is a different question from whether it is *succeeding*.
+
+The first version of this got it wrong in the opposite direction, and only
+breaking the service on purpose revealed it. The request counter records every
+request the process serves, and the cluster probes it constantly for liveness
+and readiness. So an idle service reported a steady rate of successful requests
+that was entirely the cluster talking to itself, and a service nobody was
+calling looked busy. Worse, when the readiness probe was made to fail, those
+failures landed in the same counter and the view reported a fifth of requests
+failing — reading as users being served errors, when no user was involved and
+the previous version was serving every real request without fault.
+
+The views now exclude the probe paths. That restores the problem of zero
+meaning two things rather than removing it, which is the right trade: a number
+that is honestly ambiguous is easier to reason about than one that is
+confidently wrong.
+
+### What breaking it deliberately showed
+
+Each failure the services can be put into produces a different answer, and the
+difference is the distinction the whole platform is arranged around.
+
+| | readiness fails | liveness fails |
+|---|---|---|
+| scrape targets answering | 3 | 0 |
+| replicas available | 2 | 0 |
+| replicas carrying the new version | 1 | 2 |
+| container restarts | 0 | 15 |
+
+A readiness failure does not take the service down. The previous version keeps
+serving every request, the deploy simply stops part-way, and the only trace is
+updated replicas falling below desired and targets exceeding available. A
+liveness failure takes it down: the container is killed and restarted until
+nothing is answering at all.
+
+That difference is the safety property made visible. Before this, both were
+"the deploy didn't work".
+
+### No number here is declared too high
+
+Nothing in any view says a rate is too great or a run too late. Those are
+release decisions, and they belong with whatever has to act on them rather than
+with the thing that describes the service. Choosing them here would mean
+choosing them before anything existed that had to use them, and the predictable
+result is a number picked to make a release pass rather than to describe
+reality.
+
+### The measurements do not survive the platform
+
+Nothing claims persistent storage. The collector's database lives in a
+directory belonging to its pod and is deleted with it, so a reschedule loses
+the history, never mind a teardown. Retention is a day, set explicitly, because
+the cluster is parked between working sessions and no measurement can outlive
+the cluster that recorded it — the chart's own default of ten days would have
+been a claim this platform cannot keep.
+
+This is a decision rather than an oversight, and the cost is real: every figure
+quoted above was taken from a cluster that no longer exists. They are preserved
+as text written down at the time. Nobody can re-run those queries, and if one
+of them is wrong, the evidence that would correct it is gone.
+
 ## Getting in from outside
 
 The ingress controller is Traefik, driven through the portable routing API
@@ -362,6 +486,11 @@ which is why the platform is built to be torn down between working sessions and
 rebuilt from this repository. Everything inside the cluster is reconciled from
 source control, so rebuilding costs time rather than work.
 
+That is an estimate assembled from the published rates. Measured against a full
+day of running, the actual figure was **$0.235 an hour** — close enough to
+trust the estimate, and different enough to be worth quoting the measurement
+instead.
+
 The nodes were the most recent thing to change, and the reason is worth stating
 because it is the normal life of a sizing decision rather than a correction. The
 original pair were the cheapest instances that cleared the pod-per-node ceiling
@@ -369,6 +498,19 @@ the networking plugin imposes. Once the platform components alone occupied
 nineteen of the twenty-two available slots, there was no room for the workloads
 the cluster exists to run, and the sizing that had been right became the sizing
 that had been outgrown.
+
+Adding the collector and its views did not change the hourly cost, because they
+are processes on nodes that were already paid for. What they consume is room.
+Counted on the running cluster: **twenty-eight of thirty-four pod slots in use,
+six free** — and four rather than six at the moment a batch run is in flight in
+both environments, which is the figure worth planning against.
+
+The nodes were deliberately not resized to make space for what comes next. The
+estimate made before installing the collector said four slots would remain and
+six did, because it counted the batch worker's pods as though they were always
+present. They exist for about thirty seconds in every ten minutes. Sizing
+against a component that does not exist yet is guessing, and the guess that was
+actually made here was wrong by two in the space of one phase.
 
 Two secrets in AWS add about $0.80 a month and are not torn down with the
 cluster, deliberately — they are what makes a rebuild produce a working
@@ -410,9 +552,20 @@ report.
 ## What is deliberately absent
 
 No remote state: state is a local file, and the two configurations share only
-the cluster's name rather than reading each other's state. No metrics
-collection, no progressive delivery, no release windows. Each is deferred
-rather than forgotten.
+the cluster's name rather than reading each other's state. No progressive
+delivery, no release windows. Each is deferred rather than forgotten.
+
+**No logs, and no alerting.** Both are absent on purpose rather than pending.
+Metrics answer whether a service is healthy; logs answer why it is not, and the
+second question is a different piece of work with its own storage and its own
+costs. Alerting is switched off in the component that ships it, because nothing
+here pages anybody — and a notification component with no destination
+configured is worse than an absent one, since it looks installed and reports
+healthy while delivering nothing.
+
+The gap this leaves is real and worth stating: when a view shows a run failed,
+there is nothing here that says what it failed on. That question currently ends
+at the cluster's own record of the run.
 
 **No database, and that one is a decision rather than a deferral.** The batch
 worker stores nothing. It was considered carefully and refused, because the
