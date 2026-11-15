@@ -69,6 +69,52 @@ spec:
           # was added, two replicas did not fit at all.
           replicas: 1
 
+          # How traffic actually gets split.
+          #
+          # The controller knows how to weight traffic through several routing
+          # layers, but not through the vendor-neutral routing API this
+          # cluster already runs. That support lives outside the controller,
+          # as an executable it fetches on startup and runs as a child
+          # process. It is the only dependency in this platform that is not a
+          # chart, an image or a module, and it is pinned differently from all
+          # three.
+          #
+          # Pinned three ways on purpose. The release tag fixes which version,
+          # the checksum fixes which bytes, and the controller refuses to
+          # start if either is unsatisfied. Measured rather than copied: the
+          # published digest and the downloaded file agree, and the file is
+          # 77.7 MB.
+          trafficRouterPlugins:
+            - name: "argoproj-labs/gatewayAPI"
+              location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.17.0/gatewayapi-plugin-linux-amd64"
+              sha256: "1904ca787d33107c140521899d61fff030ee75d99908bd175fca5a4647759061"
+
+          # Raised from the chart's thirty seconds, for a reason that only
+          # exists because of the block above.
+          #
+          # The controller downloads that 77.7 MB executable before it answers
+          # anything, and it does so again every time the pod is replaced. At
+          # the chart's defaults it has thirty seconds plus three twenty-second
+          # attempts before it is killed for being unhealthy — and a kill
+          # restarts the download, so a slow link produces a loop rather than a
+          # slow start. The download was measured at fifty-one seconds on an
+          # ordinary connection, which is inside ninety but not comfortably.
+          #
+          # The accepted cost is that a controller which wedges during its
+          # first two and a half minutes is no longer caught by this probe.
+          # That is the narrower risk: this probe exists to catch a running
+          # controller that has stopped responding, and the start is the one
+          # period when slow and stuck look identical from outside.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 150
+            periodSeconds: 20
+            failureThreshold: 3
+            successThreshold: 1
+            timeoutSeconds: 10
+
           resources:
             requests:
               cpu: 50m
@@ -81,6 +127,18 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+
+        # The chart grants the routing API permissions its own way, and it is
+        # one verb short of what the plugin's documentation asks for: it
+        # allows reading and replacing a route but not patching one. Whether
+        # the plugin needs the difference is not stated anywhere, and the
+        # moment it would be discovered is the middle of a release with
+        # traffic already split. Added explicitly rather than found out then.
+        providerRBAC:
+          additionalRules:
+            - apiGroups: ["gateway.networking.k8s.io"]
+              resources: ["httproutes"]
+              verbs: ["patch"]
 
         # The controller ships a web interface for watching a release. It is
         # off by default and stays off: it costs a pod on a cluster where pods
