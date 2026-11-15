@@ -81,6 +81,47 @@ spec:
 {{ toYaml . | indent 8 }}
       {{- end }}
 
+      {{- if .Values.canary.steps }}
+      {{- /*
+      The gate, running alongside the steps above rather than between them.
+
+      Two shapes were available. One runs a measurement at a named point and
+      blocks until it answers, which reads neatly and only looks at the
+      service at the moments somebody chose. The other, used here, runs
+      continuously from the first weight onward and can abandon the release at
+      any moment in any step.
+
+      Continuous was chosen because the thing being guarded against does not
+      wait to be asked. A version that starts failing forty seconds into a
+      three-minute step would, under the other shape, keep its traffic until
+      the step ended and the next measurement was due. Nothing about a
+      failure makes it arrive on a schedule.
+
+      It begins at step one rather than step zero: there is no point measuring
+      a candidate before any traffic has been pointed at it, and a measurement
+      taken then would read an absent version as a failing one.
+      */}}
+      analysis:
+        templates:
+          - templateName: payments-api-release-gate
+        startingStep: 1
+        {{- /*
+        The one thing the template cannot know: which replica set is the
+        candidate. The controller fills this in when it starts a measurement,
+        and every query in the template narrows to it.
+
+        Without this the gate would measure the service rather than the
+        release — including the version already running, which is serving the
+        large majority of traffic and is known to be fine. A candidate failing
+        every request it received would barely move a figure averaged over
+        both, and the gate would pass it.
+        */}}
+        args:
+          - name: canary-hash
+            valueFrom:
+              podTemplateHashValue: Latest
+      {{- end }}
+
   template:
     metadata:
       labels:

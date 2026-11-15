@@ -1,0 +1,143 @@
+{{- /*
+The release gate: what is measured while traffic is being shifted, and what
+result abandons the release.
+
+Committed next to the service for the same reason its scrape definition is.
+The thing that describes a service lives with it, so adding a service later is
+a file in that service's chart rather than an edit to something central.
+
+Nothing here invents a measurement. All three queries read counters the
+service already exposes and the collector already gathers, by the names chosen
+when the indicators were decided. A gate that needs a new metric to be
+writable is a gate that is wrong about what matters.
+
+THE ORDER OF THESE THREE IS NOT ARBITRARY. The first establishes that the
+candidate is answering at all. Only then does the second question — what share
+of its answers failed — mean anything, because a version serving nothing fails
+nothing and would otherwise pass a gate on failures with a perfect record.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payments-api-release-gate
+  labels:
+    app.kubernetes.io/name: payments-api
+spec:
+  args:
+    {{- /*
+    Which replica set is the candidate. Declared here as a name with no value,
+    and filled in by the rollout that uses this template — see the analysis
+    block there. The split is not stylistic: a template describes what it
+    needs, and only the rollout knows which replica set is new, because that
+    changes with every release and is not knowable when this file is
+    committed.
+
+    This is what lets every query below ask about the new version alone rather
+    than about the service as a whole, which would mix in the version already
+    known to be fine and dilute whatever the candidate is doing.
+    */}}
+    - name: canary-hash
+
+  metrics:
+    {{- /*
+    1. Is the candidate serving anything at all?
+
+    This measurement exists because of a property of this service that is easy
+    to miss: both of its failure switches act on the health endpoints, and the
+    handler that serves requests returns success unconditionally. So a
+    candidate that cannot start, or never becomes ready, is never sent a
+    request — and reports no failures, because it reports nothing.
+
+    To a query that sums failures, "answering everything correctly" and "not
+    answering" are the same answer. This is the third time this platform has
+    met that shape, after a sum over an empty selector and a scheduled job
+    that silently stopped being scheduled.
+
+    The floor is a fifth of what the smallest step should produce: at ten
+    percent of the measured traffic the candidate should see about half a
+    request a second. Low enough never to trip on ordinary variation, high
+    enough to separate "quiet" from "absent".
+    */}}
+    - name: candidate-is-serving
+      interval: {{ .Values.gate.interval }}
+      failureLimit: {{ .Values.gate.failureLimit }}
+      successCondition: result[0] >= {{ .Values.gate.minRequestsPerSecond }}
+      provider:
+        prometheus:
+          address: {{ .Values.gate.collector }}
+          query: |
+            sum(rate(payments_api_requests_total{
+              namespace="{{ .Release.Namespace }}",
+              path="/",
+              rollouts_pod_template_hash="{{ `{{args.canary-hash}}` }}"
+            }[{{ .Values.gate.window }}])) or vector(0)
+
+    {{- /*
+    2. What share of real requests did the candidate fail?
+
+    Probe paths are excluded, for the same reason they are excluded from the
+    views a person reads: a release gate counting the cluster's own health
+    checks is measuring the cluster talking to itself, and a broken readiness
+    probe would read as users being served errors when no user was involved.
+
+    Both halves are guarded against matching nothing, and the denominator is
+    clamped away from zero. That is not defensive habit — it is the correction
+    to a bug this repository shipped twice, where a ratio read "no data" at
+    precisely the moment the service was healthiest, because summing over a
+    selector that matches nothing returns no series rather than zero.
+    */}}
+    - name: candidate-error-share
+      interval: {{ .Values.gate.interval }}
+      failureLimit: {{ .Values.gate.failureLimit }}
+      successCondition: result[0] <= {{ .Values.gate.maxErrorShare }}
+      provider:
+        prometheus:
+          address: {{ .Values.gate.collector }}
+          query: |
+            (
+              sum(rate(payments_api_requests_total{
+                namespace="{{ .Release.Namespace }}",
+                path="/",
+                status!~"2..",
+                rollouts_pod_template_hash="{{ `{{args.canary-hash}}` }}"
+              }[{{ .Values.gate.window }}])) or vector(0)
+            )
+            /
+            clamp_min(
+              sum(rate(payments_api_requests_total{
+                namespace="{{ .Release.Namespace }}",
+                path="/",
+                rollouts_pod_template_hash="{{ `{{args.canary-hash}}` }}"
+              }[{{ .Values.gate.window }}])) or vector(0),
+              0.0001
+            )
+
+    {{- /*
+    3. How long did requests take?
+
+    Read the threshold in the values file before trusting this one. The
+    histogram's smallest bucket is five milliseconds and this service answers
+    in about nine microseconds, so every observation it has ever recorded sits
+    in that first bucket and the reported percentile is interpolation rather
+    than measurement. The gate is real but coarse: it can only see a
+    regression large enough to cross five milliseconds.
+
+    Kept rather than dropped, because a candidate that is slow without failing
+    is a real way to be worse and the other two measurements cannot see it at
+    all. Its blindness is written down instead of being hidden behind a
+    precise-looking number.
+    */}}
+    - name: candidate-latency
+      interval: {{ .Values.gate.interval }}
+      failureLimit: {{ .Values.gate.failureLimit }}
+      successCondition: result[0] <= {{ .Values.gate.maxLatencySeconds }}
+      provider:
+        prometheus:
+          address: {{ .Values.gate.collector }}
+          query: |
+            histogram_quantile(0.95, sum by (le) (rate(
+              payments_api_request_duration_seconds_bucket{
+                namespace="{{ .Release.Namespace }}",
+                path="/",
+                rollouts_pod_template_hash="{{ `{{args.canary-hash}}` }}"
+              }[{{ .Values.gate.window }}])))

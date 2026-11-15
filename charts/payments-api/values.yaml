@@ -93,4 +93,97 @@ route:
 # chose, and leaving it would have meant the schedule was decided by whatever
 # was convenient to watch.
 canary:
-  steps: []
+  steps:
+    # Ten percent first, and the reason is the measurement rather than the
+    # exposure. At the measured traffic of 4.87 requests a second, ten percent
+    # sends the candidate about half a request a second — roughly 58 requests
+    # in a measurement window. That is the smallest sample a failure can still
+    # be distinguished from silence in. At five percent the window holds 29
+    # requests and a single failure is 3.4 percent of the sample, so the
+    # measurement becomes coarser than any threshold worth setting, and a
+    # failing version is more likely to clear the first gate and be promoted
+    # to a weight where it does more harm. Below a certain weight, a smaller
+    # first step makes the release less safe.
+    - setWeight: 10
+    # Three minutes, which is six scrapes at the collector's thirty-second
+    # interval. Two minutes gives four samples and one minute gives two, and a
+    # rate computed from two samples is a difference rather than a rate. A
+    # longer pause costs release time but not exposure to a bad version:
+    # how quickly a release is abandoned is set by the gate's own interval and
+    # tolerance, not by how long a passing step waits.
+    - pause:
+        duration: 3m
+    # Each step roughly triples, then doubles. The size of a step is a bet,
+    # and the evidence behind it grows with every step that passes: three
+    # clean minutes at ten percent is around 880 observed requests, so
+    # widening to thirty risks three times the traffic on far more evidence.
+    - setWeight: 30
+    - pause:
+        duration: 3m
+    - setWeight: 60
+    - pause:
+        duration: 3m
+
+# The release gate. What is measured while the weights above are in force, and
+# what result abandons the release. The queries are in the template beside this
+# chart's other files; only the numbers are here.
+gate:
+  # Where to ask. The collector installed two phases ago, addressed by service
+  # rather than by address, so it survives being rescheduled.
+  collector: http://metrics-kube-prometheus-st-prometheus.metrics.svc.cluster.local:9090
+
+  # How often a measurement is taken. One per scrape: asking more often than
+  # the data changes only re-reads the same samples and makes a transient look
+  # like several independent observations.
+  interval: 30s
+
+  # How far back each query looks. Six scrapes.
+  window: 2m
+
+  # How many failed measurements are tolerated before the release is
+  # abandoned. Three failures at thirty-second intervals means a candidate has
+  # to look wrong for about ninety seconds, which is where the tolerance for a
+  # transient lives — see the note on the error share below.
+  failureLimit: 2
+
+  # The candidate must be serving at least this many requests a second.
+  #
+  # A fifth of the half-request-a-second the smallest step should produce. This
+  # is the measurement that catches the failure the others cannot see: a
+  # candidate that never becomes ready serves nothing, fails nothing, and would
+  # otherwise be promoted on a perfect record.
+  #
+  # Too high, near the expected value, and ordinary variation aborts good
+  # releases. Too low or absent, and a dead version passes every gate.
+  minRequestsPerSecond: "0.1"
+
+  # The share of real requests the candidate may fail.
+  #
+  # The precision here is partly a fiction and that is worth knowing. At 58
+  # requests in a window, one failure is 1.7 percent — there is no sample in
+  # which this can read one percent. In practice it means any failed request is
+  # a breach, and the tolerance for a blip lives in failureLimit above rather
+  # than in a looser percentage. A service with real traffic would make this a
+  # genuine proportion and could afford a smaller tolerance.
+  #
+  # Too strict and every blip aborts a good release, which is its own outage:
+  # the fix for an incident is also a release. Too loose — five percent, say —
+  # and at this volume a version failing one request in twenty could promote.
+  maxErrorShare: "0.01"
+
+  # The ninety-fifth percentile request duration the candidate may reach.
+  #
+  # READ THIS BEFORE TRUSTING THE NUMBER. Every one of the 8,421 requests this
+  # service has served fell in the histogram's smallest bucket, five
+  # milliseconds, and the true mean is nine microseconds. The reported
+  # percentile is interpolation inside that bucket, not a measurement. This
+  # gate can therefore only detect a regression large enough to cross five
+  # milliseconds — a factor of roughly five hundred. It cannot see a service
+  # that becomes ten times slower.
+  #
+  # The limit is in the bucket boundaries, chosen when the metric was added,
+  # not in this threshold. Fixing it means re-bucketing the histogram, which
+  # means changing the service, which is not this phase's business. Ten
+  # milliseconds is the lowest value the histogram can express without sitting
+  # a rounding error from the idle reading of 0.00475.
+  maxLatencySeconds: "0.01"
