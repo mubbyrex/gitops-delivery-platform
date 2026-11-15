@@ -25,8 +25,16 @@ image:
 # Both halves of the failure switch, off. Turning one on is a commit, which is
 # the point — breaking a service deliberately should be as visible and as
 # reversible as any other change.
+# DELIBERATELY BROKEN, the other half this time.
+#
+# Readiness failing produces a version that never serves, which the cluster
+# stops on its own before the gate is ever reached. Liveness failing produces
+# the case the gate exists for: a version that becomes ready, is given real
+# traffic, and then stops being able to serve it.
+#
+# Reverted in the commit after this one.
 failure:
-  liveness: false
+  liveness: true
   readiness: false
 
 readyAfterSeconds: 0
