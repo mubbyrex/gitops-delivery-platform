@@ -9,7 +9,13 @@
 # anything and at which traffic can be split between versions later.
 replicaCount: 2
 
-version: "dev"
+# TEMPORARY, for the probe described in this chart's canary steps. Changing
+# this changes the pod template, which is what starts a release; and because
+# the service reports this string in its own responses, it is also what makes
+# "which version answered me" a question answerable from outside the cluster
+# rather than from the controller's status. Returns to "dev" once the weight
+# has been observed.
+version: "dev-probe"
 
 image:
   # Written by the build pipeline, which commits it here and nowhere else.
