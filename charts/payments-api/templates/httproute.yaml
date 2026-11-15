@@ -1,0 +1,48 @@
+{{- /*
+How a request from outside the cluster reaches this service, and the object the
+release controller edits to move traffic between versions.
+
+The two backend references are the whole mechanism. At rest the first carries
+everything; during a release the controller writes weights across both, and
+the router splits requests in that proportion. Nothing in this file sets a
+weight, deliberately: a weight written here would be a starting value that the
+controller immediately overwrites, and committing one would suggest this
+repository decides the split when the controller does.
+
+The parent gateway lives in another namespace, because one front door serves
+every environment. That direction of reference is allowed by the gateway rather
+than by this file — it admits routes from any namespace that is an environment.
+
+Matching is by host name rather than by path. Path matching would have needed
+no host at all, and would have put the environment into the request path, which
+changes the one label the service's own measurements are grouped by. The cost
+is that reaching this from outside requires a name that resolves to the load
+balancer, and in this platform nothing publishes one: a request has to carry
+the host name itself. A real deployment would have a DNS record and this would
+be invisible.
+*/}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: payments-api
+  labels:
+    app.kubernetes.io/name: payments-api
+spec:
+  parentRefs:
+    - name: {{ .Values.route.gateway.name }}
+      namespace: {{ .Values.route.gateway.namespace }}
+      sectionName: {{ .Values.route.gateway.listener }}
+
+  hostnames:
+    - {{ required "a route needs a host name, so that two environments on one gateway do not collide" .Values.route.hostname | quote }}
+
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: payments-api-stable
+          port: {{ .Values.service.port }}
+        - name: payments-api-canary
+          port: {{ .Values.service.port }}

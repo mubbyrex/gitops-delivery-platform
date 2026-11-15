@@ -63,3 +63,33 @@ probes:
     initialDelaySeconds: 2
     periodSeconds: 5
     failureThreshold: 3
+
+# How this service is published, and which gateway publishes it.
+#
+# The gateway is shared by every environment and lives outside them, so these
+# three values are the same everywhere and belong here rather than in an
+# environment file. The host name is not: it is what keeps two environments
+# from claiming the same path on one gateway, so it differs by definition and
+# has no default.
+route:
+  gateway:
+    name: traefik-gateway
+    namespace: traefik
+    listener: web
+  hostname: ""
+
+# The release schedule: how much traffic an unproven version gets, and for how
+# long, before it gets more.
+#
+# WHAT IS HERE NOW IS A PROBE AND NOT A SCHEDULE. A first step of half the
+# traffic is not a canary; it is a split large enough to be unmistakable from
+# outside the cluster, chosen so that the mechanism can be shown to work before
+# anybody argues about numbers. The indefinite pause after it holds the split
+# open for as long as it takes to observe.
+#
+# Both values are replaced by a chosen schedule, decided against this service
+# rather than against whatever makes a release succeed.
+canary:
+  steps:
+    - setWeight: 50
+    - pause: {}

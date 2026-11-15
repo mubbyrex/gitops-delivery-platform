@@ -25,9 +25,31 @@ metadata:
   labels:
     app.kubernetes.io/name: payments-api
 spec:
+  {{- /*
+  Narrower than it looks like it needs to be, for a reason that was found by
+  getting it wrong. Three services now carry this service's name label: one
+  that selects every version and two that the release controller pins to a
+  single version each. Matching on the name would have matched all three, and
+  every pod would have been scraped once per service — so a request rate would
+  have read three times its real value at rest, and something between two and
+  three times during a release, which is the worst kind of wrong because it
+  still moves in the right direction.
+  */}}
   selector:
     matchLabels:
-      app.kubernetes.io/name: payments-api
+      kestrel-pay.io/role: all-versions
+
+  {{- /*
+  Carry the replica set each sample came from onto the sample itself.
+
+  Without this, two versions serving at once are indistinguishable in the
+  measurements: every request lands in the same series whichever version
+  answered it, and a release could only be judged on the total. The release
+  controller stamps this label on every pod it creates, so adding it here is
+  what makes "is the new version failing" a question that can be asked at all.
+  */}}
+  podTargetLabels:
+    - rollouts-pod-template-hash
 
   endpoints:
     # The same port the service answers requests on. The metrics endpoint is

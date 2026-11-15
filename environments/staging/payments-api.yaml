@@ -24,3 +24,10 @@ failure:
 # have something to wait for, so that a release with a slow start is visibly
 # slow here rather than surprising somewhere later.
 readyAfterSeconds: 10
+
+# The host name this environment answers on. Nothing in this platform publishes
+# a DNS record for it, so a request from outside has to carry it as a header.
+# That is a gap in the demonstration rather than in the design: with a record,
+# this is just the service's address.
+route:
+  hostname: staging.payments.kestrel-pay.internal

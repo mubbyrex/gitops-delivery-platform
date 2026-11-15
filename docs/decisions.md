@@ -1823,3 +1823,139 @@ definitions, which is waste that server-side apply would avoid. It is accepted
 because the setting exists here to prevent a failure, that failure was measured
 not to apply, and switching it on for tidiness would mean the next person
 cannot tell which of the three applications turned it on for a reason.
+
+---
+
+## Traffic is weighted through the portable routing API, by a plugin rather than natively
+
+The controller that runs a release can shift traffic through several routing
+layers. For the one installed here it has two routes, and they are not
+equivalent.
+
+The first is built in: the controller understands this router's own resource
+type directly, needs nothing extra installed, and would almost certainly have
+worked first time. The second expresses the same weighting in the
+vendor-neutral routing API, and the controller cannot do that by itself — the
+support lives in a separate executable it downloads at startup and runs as a
+child process.
+
+**Decision. The plugin, with the built-in support kept as the fallback.**
+
+**Why.** The weighting is the single most copyable thing in this repository.
+Somebody reading it to work out how to release safely is far more likely to be
+running a different router than the same one, and a weighting expressed in one
+router's private type teaches them nothing transferable. The portable API is
+also where the ecosystem is going: the older object type this platform
+deliberately does not install is the one being retired, and the newer one is
+what replaced it.
+
+**Rejected: the built-in support, for being simpler.** It is simpler, and that
+is a real argument rather than a straw one. It was declined because the
+simplicity is bought by writing the one transferable idea here in the least
+transferable form.
+
+**Rejected: downgrading the routing API's type definitions to match the
+plugin's published compatibility table.** The plugin lists one version of this
+router as tested, against type definitions one minor version older than the
+ones running here, and does not list its own current release in that table at
+all. Matching it would have meant regressing a working, already-installed
+component to suit somebody else's test matrix. The types involved are stable
+across minor versions, and establishing that the combination works here is the
+answer to an untested pairing. Chasing a test matrix backwards is not.
+
+**Accepted cost, four of them, and the first is the one that matters.**
+
+The release path now depends on a combination nobody has published evidence
+for. That was accepted on the condition that it was established first rather
+than discovered later, and it was: the plugin loads and is addressed below.
+
+The second is a new kind of dependency. Everything else this platform installs
+is a chart, an image or a module, each pinned in a way the rest of the
+repository already understands. This is a file fetched from a release host at
+process start, so it is pinned by release tag and by checksum, and the
+controller refuses to start if either is unsatisfied. It is also the only
+dependency here that can go stale without anything failing.
+
+The third was not anticipated and was found by reading the probe
+configuration rather than by an outage. The controller downloads 77.7 MB
+before it answers anything, every time its pod is replaced, and the chart kills
+a container that has not answered within ninety seconds. A kill restarts the
+download, so a fetch slower than the budget produces a restart loop rather than
+a slow start. The start window was widened to cover it.
+
+The number first used to justify that widening was wrong, and wrong in an
+instructive way: fifty-one seconds, measured on the connection of the machine
+this repository is edited from, which is not where the download happens. From
+inside the cluster it took **677 milliseconds**. The window is kept, because
+the risk it guards is a slow release host rather than a slow process, but it is
+now sized against a stated risk instead of against a measurement of the wrong
+thing.
+
+The fourth is that the plugin inherits the controller's permissions and the
+chart grants the routing API one verb less than the plugin's documentation
+asks for. The verb was added rather than left to be discovered during a release
+with traffic already split.
+
+---
+
+## How the service is published, and why it now has three addresses
+
+Weighted releases need somewhere for the weight to be written and two things
+to weight between. Both of those changed how this service is exposed.
+
+**Routes attach to the shared gateway from any namespace that is an
+environment.** The gateway's default is to accept routes only from its own
+namespace, which would have meant every route living beside the router rather
+than beside the service it routes to.
+
+**Rejected: opening it to all namespaces.** One word shorter, and it would let
+anything anywhere in the cluster publish itself through the front door,
+including things that have no business being reachable. **Rejected: listing the
+environment namespaces by name.** Correct today and wrong the first time a
+third environment is added, in a file nobody would think to edit. The rule
+instead matches the presence of the label that the environment chart puts on
+every namespace it creates, so it reads "any namespace that is an environment"
+and needs no edit to stay true.
+
+**Requests are matched by host name, not by path.** Two environments share one
+gateway, and something has to tell their routes apart.
+
+**Rejected: a path prefix per environment.** It needs no host name at all,
+which is genuinely simpler given that nothing here publishes a DNS record. It
+was declined because it puts the environment into the request path, and the
+request path is the label this service's own measurements are grouped by — so
+every rate would have been split by environment inside a single environment's
+view, and the thresholds chosen later would have been chosen against a
+different shape of data than the one a real deployment produces.
+
+**Accepted cost.** Nothing in this platform publishes a name that resolves to
+the load balancer, so a request from outside has to carry the host name itself.
+Every demonstration of a weight therefore involves a header that a real
+deployment would not need. That is a gap in the demonstration rather than in
+the design, and it is better than distorting the measurements.
+
+**Three addresses where there was one.** One selects every version and exists
+to be scraped; two are pinned by the controller to a single version each and
+exist to be routed to. They cannot be the same object: the routed addresses
+must resolve to one version at a time, and the scraped one must resolve to
+both or half the traffic during a release is invisible.
+
+**Rejected: scraping the pods directly and keeping one address.** It would have
+removed the third service entirely and given the version label for free. It
+was declined because the asymmetry between the two services in this platform
+is the argument the repository exists to make, and how each one is found by the
+collector is part of that asymmetry: the request-serving service is found
+through an address because it has one, and the batch worker is found by label
+because it never does.
+
+**Accepted cost.** A service exists whose only consumer is the collector, which
+looks redundant until you know why, and three objects now carry this service's
+name label where one used to.
+
+That last point cost something immediately. The scrape definition had always
+selected on the name label, and with three services carrying it, every pod was
+about to be scraped once per service. A request rate would have read three
+times its true value at rest and somewhere between two and three times during
+a release — moving in the right direction, which is the hardest kind of wrong
+to notice. The selector is now matched on what an address selects rather than
+what it is called.
