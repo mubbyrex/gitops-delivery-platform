@@ -60,20 +60,26 @@ spec:
             namespace: {{ .Release.Namespace }}
 
       {{- /*
-      THESE NUMBERS ARE A PROBE, NOT A SCHEDULE.
+      The step schedule, and it is deliberately absent rather than empty.
 
-      A fifty percent first step is not a canary. It is here because proving
-      that a weight set on this object reaches the route and changes which
-      version answers a request requires a weight that is unmistakable from
-      outside, and because a value this obviously wrong cannot be mistaken for
-      a considered one or survive into the finished configuration unnoticed.
+      With no steps, a release is still a release — the controller builds the
+      new version alongside the old one, moves the whole weight across, and
+      retires the old one — but it never holds anywhere to be looked at. That
+      is the ordinary case, and establishing that the ordinary case still
+      works before adding anything to interrupt it is the only reason to spend
+      a task on a configuration this plain.
 
-      The real schedule is chosen separately, against this service rather than
-      against whatever makes a demonstration pass, and replaces everything
-      between here and the end of this block.
+      What goes here is the deliverable of this phase: how much traffic a
+      version nobody has evidence about gets first, how long the measurement
+      runs before it is believed, and what result abandons the release. Those
+      numbers are chosen against this service rather than against whatever
+      makes a release succeed, which is why nothing is guessed into this space
+      in the meantime.
       */}}
+      {{- with .Values.canary.steps }}
       steps:
-{{ toYaml .Values.canary.steps | indent 8 }}
+{{ toYaml . | indent 8 }}
+      {{- end }}
 
   template:
     metadata:

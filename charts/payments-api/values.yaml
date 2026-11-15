@@ -81,15 +81,16 @@ route:
 # The release schedule: how much traffic an unproven version gets, and for how
 # long, before it gets more.
 #
-# WHAT IS HERE NOW IS A PROBE AND NOT A SCHEDULE. A first step of half the
-# traffic is not a canary; it is a split large enough to be unmistakable from
-# outside the cluster, chosen so that the mechanism can be shown to work before
-# anybody argues about numbers. The indefinite pause after it holds the split
-# open for as long as it takes to observe.
+# Empty on purpose, and not for long. With nothing here a release still runs
+# through the controller and still moves traffic by weight; it simply never
+# stops anywhere, so there is no point at which anything could be measured and
+# no point at which anything could be withdrawn. That is the plain case, and it
+# is worth having working on its own before anything is added to interrupt it.
 #
-# Both values are replaced by a chosen schedule, decided against this service
-# rather than against whatever makes a release succeed.
+# A fifty percent first step with an indefinite pause stood here while the
+# weighting mechanism was being proved. It was a probe and it was removed: a
+# number that exists to make a demonstration visible is not a number anybody
+# chose, and leaving it would have meant the schedule was decided by whatever
+# was convenient to watch.
 canary:
-  steps:
-    - setWeight: 50
-    - pause: {}
+  steps: []
