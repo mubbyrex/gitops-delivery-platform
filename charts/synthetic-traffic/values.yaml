@@ -1,0 +1,56 @@
+# Defaults only. The one value with no default is the host name to ask for,
+# because that is what decides which environment receives the load, and
+# guessing it wrong would quietly load the wrong one.
+
+# Where the requests are sent. The front door, not the service.
+#
+# This is the whole point of the component and the easiest thing to get wrong.
+# Sending requests straight at the service would be simpler, would produce a
+# healthy-looking request rate, and would bypass the traffic split entirely —
+# so a release could move every weight it liked and the load would carry on
+# hitting both versions in whatever proportion the service's own endpoints
+# happened to be in. The measurement would look fine and would be measuring
+# the wrong thing.
+target:
+  # The router's address inside the cluster. A request arriving here is routed
+  # by the same rules, and the same weights, as one arriving from the internet.
+  url: http://traefik.traefik.svc.cluster.local/
+  # Which environment answers. No default on purpose.
+  hostHeader: ""
+
+# How hard. Low on purpose: this is here to make a rate non-zero and a
+# proportion meaningful, not to find out what the service can take. Load
+# testing is a different activity with different measurements, and confusing
+# the two would mean a release gate that fails whenever the generator is
+# turned up.
+#
+# Seconds between requests, from a single sender. The achieved rate is lower
+# than the arithmetic suggests, because each request costs a process.
+intervalSeconds: "0.2"
+
+# Stamped on every request this sends. Nothing in the platform reads it, and
+# it is set anyway: anybody looking at traffic on the router can then tell at a
+# glance that none of it came from a person.
+userAgent: "kestrel-pay-synthetic-traffic/0.1 (not a real user)"
+
+replicaCount: 1
+
+image:
+  # A mirror of the base image, on a registry this platform already pulls
+  # from, rather than the original on a registry it does not. The original is
+  # rate limited for anonymous callers, and a release demonstration that
+  # intermittently cannot start its own load source would be a bad trade for
+  # one less registry name.
+  repository: public.ecr.aws/docker/library/alpine
+  # By content, as everywhere here. This is an index covering several
+  # architectures, so it stays correct if the node type changes.
+  digest: sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    cpu: 200m
+    memory: 64Mi

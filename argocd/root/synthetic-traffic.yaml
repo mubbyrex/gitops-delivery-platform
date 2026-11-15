@@ -1,0 +1,57 @@
+# Generated requests, in dev only.
+#
+# This is the one entry in this directory that would not exist in a real
+# deployment of this platform, and it is listed alongside the others rather
+# than hidden somewhere because a reader should meet that fact immediately.
+#
+# The reason it exists: this platform has no users. Every request rate it has
+# ever measured was the cluster probing itself, and those paths are now
+# deliberately excluded from what counts as traffic. A release that widens or
+# withdraws itself based on the share of requests failing needs requests to
+# compute a share of, and a share of nothing is not a measurement — it is a
+# division that happens to return something.
+#
+# So the requests are generated, they are labelled as generated, and they go
+# through the front door rather than at the service, because a split that is
+# bypassed is not a split.
+#
+# Wave two, like the services: the namespace and its quota already exist, and
+# there is no ordering requirement against the service it sends to. A sender
+# that starts first simply fails for a few seconds and counts the failures,
+# which is the behaviour it needs during a release anyway.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: synthetic-traffic
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  sources:
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      path: charts/synthetic-traffic
+      helm:
+        valueFiles:
+          - $values/environments/dev/synthetic-traffic.yaml
+
+    - repoURL: https://github.com/mubbyrex/gitops-delivery-platform.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # Owned by the environment component, along with the quota that bounds
+      # it. One pod of that quota is spent on this.
+      - CreateNamespace=false

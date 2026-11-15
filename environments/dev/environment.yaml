@@ -5,8 +5,21 @@
 # away cannot take the whole node pool with it.
 name: dev
 
+# Raised from six, counted rather than estimated.
+#
+# At the fullest moment a release can produce, this namespace holds: two copies
+# of the service on the trusted version, up to two more on the version being
+# tried, one batch run, and one sender generating the requests the release is
+# judged on. That is six, and a ceiling of six does not fit six — a quota that
+# is exactly met rejects the next pod, so the release would stall part-way with
+# traffic already split, which is the worst place for it to stop.
+#
+# Eight leaves two spare. Not a round number for its own sake: it is the
+# measured worst case plus room for one pod to be replaced while another is
+# starting, which is the ordinary way a count briefly exceeds its own steady
+# state.
 quota:
-  pods: "6"
+  pods: "8"
   cpu: "2"
   memory: 2Gi
 

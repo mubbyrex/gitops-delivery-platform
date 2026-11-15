@@ -1959,3 +1959,66 @@ times its true value at rest and somewhere between two and three times during
 a release — moving in the right direction, which is the hardest kind of wrong
 to notice. The selector is now matched on what an address selects rather than
 what it is called.
+
+---
+
+## The requests a release is judged on are generated, and said to be
+
+This platform has no users. Every request rate it has ever recorded was the
+cluster probing itself, and those paths are now deliberately excluded from
+what counts as traffic — which leaves zero.
+
+A release that widens or withdraws itself based on the share of requests
+failing needs requests to take a share of. A share of nothing is not a
+measurement that happens to be zero; it is a division that returns whatever
+the tooling decides to return when asked about nothing. So the requests are
+generated.
+
+**Decision.** A single sender, in one environment, issuing one request at a
+time through the router's own address with the host name the route matches on.
+It lives in its own chart named for what it is, is labelled as existing for a
+demonstration, and is listed in the same directory as everything else rather
+than tucked away.
+
+**Why through the front door rather than at the service.** This is the part
+that is easy to get wrong and impossible to notice afterwards. Requests sent
+straight at the service produce a healthy-looking rate and bypass the traffic
+split completely: the release could set any weight it liked and the load would
+keep arriving at both versions in whatever proportion their endpoints happened
+to be in. Every number would look reasonable and none of them would be about
+the release.
+
+**Rejected: a load testing tool.** There are good ones, and one would give
+distributions, percentiles and a request rate that holds steady under
+contention. It was declined because load testing and traffic generation are
+different activities that look similar. The question here is "what share of
+requests failed", not "what can this take", and installing a tool built for
+the second invites tuning it until the first comes out favourable. A sender
+that cannot be turned up is a sender nobody will be tempted to turn up.
+
+**Rejected: generating the load from outside the cluster.** Closer to real,
+and genuinely attractive: traffic from an operator's machine arrives the way a
+user's would. Declined because it is not committed anywhere, so a release could
+only be demonstrated while somebody happened to have a terminal open, and the
+evidence would depend on a laptop staying awake.
+
+**Rejected: adding an endpoint to the service to drive load internally.** It
+would need no extra pod. It would also mean changing a service in order to
+test the mechanism that releases it, and the services here stay stubs for the
+same reason.
+
+**Accepted cost, and it is the sharpest in this phase.** No real user traffic
+has ever reached this platform, and after this change the graphs look as
+though it has. Anybody reading a request rate here is reading a loop, and the
+only defence against that being mistaken for a user is that it is said plainly
+— in the component's name, in its labels, in its chart description, and here.
+A graph is more persuasive than a caveat, which is why the caveat is in four
+places.
+
+It also costs a pod in an environment that did not have one spare, and the
+ceiling on that environment was raised from six to eight to make room. The
+count came out at exactly six at the fullest moment a release produces — two
+copies on the trusted version, two on the version being tried, a batch run,
+and the sender — and a ceiling that is exactly met rejects the next pod, which
+would stall a release with traffic already split. Processor and memory were
+never close: a quarter of the processor ceiling and a sixth of the memory one.

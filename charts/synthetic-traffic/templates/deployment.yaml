@@ -1,0 +1,106 @@
+{{- /*
+A sender, not a service. Nothing connects to this and it exposes no port; it
+exists to keep a request rate above zero so that a proportion computed from it
+means something.
+
+Why this is apparatus rather than platform, stated here because the
+distinction matters more than it looks: every other workload in this
+repository would exist in a real deployment of this platform. This one would
+not. In a real deployment the requests come from people, and a release is
+judged on what those people experienced. Here there are no people, and the
+honest thing is to say so in the open rather than to produce a graph that
+looks like users and is not.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-traffic
+  labels:
+    app.kubernetes.io/name: synthetic-traffic
+    app.kubernetes.io/managed-by: argocd
+    kestrel-pay.io/purpose: demonstration
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: synthetic-traffic
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: synthetic-traffic
+        kestrel-pay.io/purpose: demonstration
+    spec:
+      {{- /*
+      Stop quickly. There is nothing in flight worth draining, and a sender
+      that lingers for thirty seconds after being told to stop just prolongs
+      every teardown.
+      */}}
+      terminationGracePeriodSeconds: 2
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: sender
+          image: "{{ .Values.image.repository }}@{{ required "an image digest is required: a tag would not pin the version" .Values.image.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          env:
+            - name: TARGET
+              value: {{ .Values.target.url | quote }}
+            - name: HOST_HEADER
+              value: {{ required "a host header is required: it decides which environment receives the load" .Values.target.hostHeader | quote }}
+            - name: INTERVAL
+              value: {{ .Values.intervalSeconds | quote }}
+            - name: AGENT
+              value: {{ .Values.userAgent | quote }}
+
+          {{- /*
+          One request at a time, in a loop, with a report every hundred.
+
+          The report is the only thing this container produces, and it is
+          there for a specific moment: when a release is withdrawn, the
+          service's own measurements say what share of requests failed, and
+          this says what a client outside the service saw at the same time.
+          Those two numbers agreeing is worth more than either alone, because
+          the first is the thing being judged reporting on itself.
+
+          Failures are counted rather than fatal. A sender that exits when the
+          service returns an error would stop generating load at exactly the
+          moment the load matters most.
+          */}}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "synthetic traffic -> $TARGET as $HOST_HEADER every ${INTERVAL}s"
+              n=0; ok=0; bad=0
+              while :; do
+                if wget -q -T 5 -O /dev/null -U "$AGENT" \
+                        --header="Host: $HOST_HEADER" "$TARGET"; then
+                  ok=$((ok+1))
+                else
+                  bad=$((bad+1))
+                fi
+                n=$((n+1))
+                if [ $((n % 100)) -eq 0 ]; then
+                  echo "sent=$n ok=$ok failed=$bad"
+                fi
+                sleep "$INTERVAL"
+              done
+
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

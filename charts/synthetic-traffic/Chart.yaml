@@ -1,0 +1,9 @@
+apiVersion: v2
+name: synthetic-traffic
+description: >-
+  Generated requests, so that a release has something to measure. Not part of
+  the platform: this exists only because the platform has no users, and a
+  release gated on an error rate computed over no requests is not gated on
+  anything. Deployed to one environment, for the duration of a demonstration.
+type: application
+version: 0.1.0

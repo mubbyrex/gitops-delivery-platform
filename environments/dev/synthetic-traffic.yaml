@@ -1,0 +1,11 @@
+# Generated requests, in dev only.
+#
+# Staging deliberately gets none. Only one environment demonstrates releases in
+# this platform, and load arriving in the other would be load nobody is reading
+# — a cost with no measurement attached to it.
+
+target:
+  # The same host name a request from outside the cluster has to carry, because
+  # it is routed by the same rules. If this and the service's route ever
+  # disagree, the load silently stops arriving and every rate reads zero again.
+  hostHeader: dev.payments.kestrel-pay.internal
