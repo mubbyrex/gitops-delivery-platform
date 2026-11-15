@@ -155,6 +155,25 @@ gate:
   # How far back each query looks. Six scrapes.
   window: 2m
 
+  # How long to wait after traffic first reaches the candidate before taking
+  # the first measurement.
+  #
+  # Without this the gate fails a healthy release. A rate computed over a
+  # two-minute window twenty seconds after traffic started describes the
+  # window, not the service: the arithmetic reads 0.061 requests a second
+  # against a floor of 0.1, and a correct candidate is marked absent. At sixty
+  # seconds it reads 0.243, two and a half times the floor.
+  #
+  # The other two measurements need it for a harder reason. A quantile over a
+  # window with no observations in it returns nothing at all, and nothing is
+  # not a number the gate can compare — it is reported as the query having
+  # failed rather than the candidate having failed, which is a different
+  # thing with a different tolerance.
+  #
+  # This is the same principle as the three-minute step: a measurement is only
+  # worth taking once there is enough in the window to measure.
+  initialDelay: 1m
+
   # How many failed measurements are tolerated before the release is
   # abandoned. Three failures at thirty-second intervals means a candidate has
   # to look wrong for about ninety seconds, which is where the tolerance for a

@@ -60,6 +60,7 @@ spec:
     */}}
     - name: candidate-is-serving
       interval: {{ .Values.gate.interval }}
+      initialDelay: {{ .Values.gate.initialDelay }}
       failureLimit: {{ .Values.gate.failureLimit }}
       successCondition: result[0] >= {{ .Values.gate.minRequestsPerSecond }}
       provider:
@@ -88,6 +89,7 @@ spec:
     */}}
     - name: candidate-error-share
       interval: {{ .Values.gate.interval }}
+      initialDelay: {{ .Values.gate.initialDelay }}
       failureLimit: {{ .Values.gate.failureLimit }}
       successCondition: result[0] <= {{ .Values.gate.maxErrorShare }}
       provider:
@@ -129,6 +131,7 @@ spec:
     */}}
     - name: candidate-latency
       interval: {{ .Values.gate.interval }}
+      initialDelay: {{ .Values.gate.initialDelay }}
       failureLimit: {{ .Values.gate.failureLimit }}
       successCondition: result[0] <= {{ .Values.gate.maxLatencySeconds }}
       provider:
