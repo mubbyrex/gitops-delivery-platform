@@ -9,7 +9,12 @@
 # anything and at which traffic can be split between versions later.
 replicaCount: 2
 
-version: "dev"
+# The release this environment is on. Changing it changes the pod template,
+# which is what starts a release, and the service reports it in every reply —
+# so the weight at each step can be read from outside the cluster by counting
+# which version answered, rather than taken on trust from the controller's own
+# status.
+version: "dev-2"
 
 image:
   # Written by the build pipeline, which commits it here and nowhere else.
