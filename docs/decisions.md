@@ -2142,3 +2142,81 @@ The second cost is slower releases. Nine minutes of weighting and waiting for
 a change that a plain replacement would have applied in under a minute. That
 is the price of finding out, and it is only worth paying for a service where
 being wrong in front of users costs more than nine minutes does.
+
+---
+
+## What progressive delivery cost, measured during a release rather than at rest
+
+### Pods
+
+| moment | used | of | free |
+|---|---|---|---|
+| before the phase, at rest | 28 | 34 | 6 |
+| before the phase, at its fullest | 30 | 34 | 4 |
+| after a third node, at rest | 32 | 51 | 19 |
+| **during a release, with batch runs overlapping** | **36** | **51** | **15** |
+
+The phase added two standing pods — a release controller at one replica, and
+one sender generating the requests a release is judged on — and one more
+during a release.
+
+**The canary costs one pod, not two.** At any weight below a hundred percent,
+a service of two replicas rounds to a single candidate pod, so the second copy
+the sizing was done against never appears. The phase was planned for a peak of
+four free slots and ended with fifteen, which means the third node was bought
+against a worst case that was one pod pessimistic.
+
+That does not make the node wrong. Without it the measured peak of 36 would
+have been 32 of 34, with two slots spare and a namespace quota that would have
+rejected the next pod. But the margin is larger than intended and the reason
+is worth recording rather than enjoying quietly: the estimate assumed the
+canary scales with the weight, and it scales with the replica count.
+
+### Money, and a correction
+
+The running cost was projected at about $0.277 an hour when the third node was
+bought. **Measured against a billed day, it is $0.34.**
+
+| | per hour |
+|---|---|
+| three nodes | 0.1144 |
+| cluster control plane | 0.1000 |
+| network address translation, storage, data | 0.0973 |
+| load balancing | 0.0280 |
+| **total while running** | **0.3397** |
+
+The gap of six cents an hour is not the node. It is the two lines that were
+never in any estimate here: data passing through the network address
+translation gateway, and the load balancer. Every figure quoted in this
+repository until now was built from instance and control-plane rates, which
+are the prices that are easy to look up, and ignored the ones that are
+metered by use.
+
+This matters beyond the arithmetic. Address translation is charged per
+gigabyte processed, so it rises with image pulls — which means a day of
+rebuilding and redeploying costs more per hour than a day of running the same
+thing, and the number moves with activity rather than with what is installed.
+A reader sizing a cluster from the first three lines of that table would be
+about twenty percent light.
+
+Two charges continue with the cluster torn down: the stored secrets and their
+key, about three cents a day together. Deliberate, and the only thing in this
+platform that survives a teardown.
+
+### Accepted cost
+
+Eighteen percent more per hour for capacity that is mostly idle, bought
+against a peak that lasts about a minute an hour. Stated honestly, the
+measured increase is larger in absolute terms than the decision anticipated,
+because the baseline it was compared against was itself understated.
+
+### What the next phase should expect
+
+The batch worker's release safety needs no second copy of anything — the
+hazard it addresses is precisely that two copies must never run — so it should
+cost less in pods than this phase did, not more. What it may need instead is
+somewhere to record that a run is in flight, and whatever that turns out to be
+is more likely to be a stored object than a pod.
+
+Fifteen free slots during a release is room for that and for being wrong about
+it once.
