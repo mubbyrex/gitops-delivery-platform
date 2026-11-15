@@ -127,9 +127,10 @@ decision and this pipeline does not get to make decisions. The two environments
 are therefore expected to differ, and usually do.
 
 The second diagram is about the two workloads this platform exists for and why
-they cannot be released the same way. Both now run; neither is yet released in
-the way that distinguishes them. That difference is the subject of its own
-section below.
+they cannot be released the same way. One of them now is: the request-serving
+service arrives in weighted steps with a gate between them, described below.
+The batch worker still arrives by replacement, and always will — that asymmetry
+is the argument this repository exists to make.
 
 ### What the repository is authoritative over, exactly
 
@@ -373,14 +374,17 @@ nothing is answering at all.
 That difference is the safety property made visible. Before this, both were
 "the deploy didn't work".
 
-### No number here is declared too high
+### No number in a view is declared too high
 
-Nothing in any view says a rate is too great or a run too late. Those are
-release decisions, and they belong with whatever has to act on them rather than
-with the thing that describes the service. Choosing them here would mean
-choosing them before anything existed that had to use them, and the predictable
-result is a number picked to make a release pass rather than to describe
-reality.
+Nothing in any view says a rate is too great or a run too late, and that is
+still true. Those are release decisions, and they now live with the thing that
+acts on them — the gate described under "How a new version arrives" — rather
+than with the thing that describes the service.
+
+The separation was deliberate and it paid. Because no threshold existed while
+the indicators were being chosen, the numbers could be chosen later against a
+service that had already been described, instead of being reverse-engineered
+from whatever made a release pass.
 
 ### The measurements do not survive the platform
 
@@ -395,6 +399,177 @@ This is a decision rather than an oversight, and the cost is real: every figure
 quoted above was taken from a cluster that no longer exists. They are preserved
 as text written down at the time. Nobody can re-run those queries, and if one
 of them is wrong, the evidence that would correct it is gone.
+
+## How a new version arrives
+
+For the request-serving service, a new version is no longer a replacement. It
+is a sequence: run it beside the version already trusted, give it a small share
+of real traffic, measure what it does with that share, and either widen or
+withdraw.
+
+```
+  a commit changes the image digest
+            │
+            ▼
+  the delivery controller applies a Rollout, not a Deployment
+            │
+            ▼
+  10% of traffic ──▶ measure 3 min ──▶ 30% ──▶ measure ──▶ 60% ──▶ measure ──▶ 100%
+                           │                      │                   │
+                           └──────── any of these fails ──────────────┘
+                                             │
+                                             ▼
+                              all traffic back to the previous version
+```
+
+The share each version receives is written on the route object by the release
+controller and realised by the router. It is therefore observable from outside
+the cluster rather than only in configuration: asking the service which version
+answered, two hundred times at a sixty percent weight, returned the new version
+on 61.0 percent of them.
+
+### The numbers, and why those
+
+**Ten percent first, and the reason is the measurement rather than the
+exposure.** At the traffic this platform generates, ten percent gives the
+candidate about half a request a second — roughly fifty-eight requests in a
+measurement window. That is the smallest sample in which a failure can still be
+told apart from silence. At five percent the window holds twenty-nine requests
+and a single failure is 3.4 percent of the sample, so the measurement becomes
+coarser than any threshold worth setting, and a failing version is **more**
+likely to clear the first gate and reach a weight where it does more harm.
+Below a certain point, a smaller first step makes a release less safe.
+
+**Three minutes at each step** is six scrapes at the collector's thirty-second
+interval. Two minutes gives four samples and one gives two, and a rate computed
+from two samples is a difference rather than a rate. A longer pause costs
+release time but not exposure, because how fast a release is abandoned is set
+by the gate's own interval and tolerance rather than by how long a passing step
+waits.
+
+A complete release takes about nine and a half minutes against the under-one-
+minute a plain replacement would take. That is what is being bought: three
+chances to notice a problem while most traffic is still on the version that
+works.
+
+### What the gate measures, and the one that matters
+
+Three measurements every thirty seconds, with a one-minute warm-up so the first
+is not taken against an empty window. Three failed measurements abandon the
+release.
+
+1. **Is the candidate serving at all?** At least 0.1 requests a second.
+2. **What share of its real requests failed?** At most one percent.
+3. **How long did they take?** A 95th percentile under ten milliseconds.
+
+The first exists because of something discovered by reading the service
+closely: both of its failure switches act on the health endpoints, and the
+handler that serves requests returns success unconditionally. A candidate that
+cannot stay up serves almost nothing — and therefore **fails** almost nothing.
+
+To a query that counts failures, "answering everything correctly" and "not
+answering" are the same answer.
+
+That is not theoretical. A version was released with its liveness check failing.
+It became ready, took traffic, and then died repeatedly — six restarts. Its
+error share passed every measurement with a clean record, because the handful of
+requests it managed between restarts all succeeded. What withdrew it was the
+first measurement, reading 0.014 requests a second against a floor of 0.1.
+
+**A gate built on error rate alone would have promoted that version to stable
+on the strength of having never failed a request.**
+
+The same shape has now appeared three times in this platform: a sum over a
+selector matching nothing returns no series rather than zero; a scheduled job
+that stops being scheduled increments no failure counter; a release candidate
+that cannot serve reports a clean record. Every measurement of failure needs a
+companion measurement that the thing is running at all.
+
+The third measurement is nearly blind and is kept anyway. Every request this
+service has ever served fell inside the histogram's smallest bucket of five
+milliseconds, and the true mean is nine microseconds, so the reported percentile
+is interpolation rather than measurement. It can only detect a regression large
+enough to cross five milliseconds — a factor of about five hundred. The limit is
+in the bucket boundaries chosen when the metric was added, not in the threshold,
+and it is written down rather than hidden behind a precise-looking number.
+
+### Two failures, two different things catching them
+
+| how a version fails | what stops it | does the gate run? |
+|---|---|---|
+| never becomes ready | readiness, plus the controller refusing to weight an unready candidate | **no — it never runs** |
+| becomes ready, then dies | the gate's first measurement | yes |
+
+The first was a surprise and is worth being plain about. A version whose
+readiness check fails is never sent a request, so the release never leaves its
+first step and the gate is never reached. The release was stopped by
+capabilities this platform already had before any of this was built. **The most
+likely way a version fails is caught for free; the gate is for the one that
+isn't.**
+
+Neither substitutes for the other, and a reader who installs only the gate
+would be covering the rarer case.
+
+### Going back is not a release
+
+Restoring a previous version does not creep through the weights. The controller
+recognises a return to the version that was already trusted and goes straight
+there.
+
+That asymmetry is correct: forward is gradual because the destination is
+unproven, and back is immediate because the destination is the version that was
+working. A rollback that crawled through the same schedule would keep users on
+the broken version for the length of it.
+
+### Synchronisation does not fight a withdrawal
+
+Automatic synchronisation with drift correction is the property this whole
+platform is arranged around, and an abandoned release is, by construction, a
+cluster that has declined to run what the repository asks for. The two do not
+collide. Across two withdrawals the delivery controller reported the
+application **synced** while the release sat degraded, because synchronisation
+compares specifications and a refusal lives in status.
+
+Nothing was excluded from comparison to achieve this. It works because the
+repository declares no traffic weight at all and declares each address without
+the key the controller adds, so the fields the controller writes are fields
+nothing else has ever claimed.
+
+### The batch worker is not in any of this, and that is the point
+
+It has no rollout, no traffic weight, no gate and no route. Its chart is
+unchanged by this work, confirmed by comparing it against the state before the
+work began.
+
+The reason is the thing this repository exists to argue. A weighted release
+runs two versions of a service at once, briefly and on purpose. For the
+settlement worker, two versions running at once **is the hazard** — the same
+batch settled twice, a merchant paid twice. The mechanism described above is
+not merely unnecessary for that workload; applying it would create exactly the
+failure the platform is built to prevent.
+
+A reader who notices that one service canaries and the other does not should
+not conclude the second is unfinished. The absence is the design. What the
+worker does instead — refuse to overlap, and never retry — is described above
+under the two workloads.
+
+### Where the traffic comes from, and the thing that must be said about it
+
+This platform has no users. The request rates quoted above come from a
+generator running inside the cluster, sending about five requests a second
+through the front door with the host name a real client would use.
+
+It exists because a release gated on the share of requests failing needs
+requests to take a share of, and a share of nothing is not a measurement. It
+sends through the router rather than at the service, because load sent straight
+at a service bypasses the weighting entirely and would keep arriving at both
+versions whatever the release was doing — every number would look reasonable
+and none of them would be about the release.
+
+It is the one component here that would not exist in a real deployment, and it
+is named, labelled and listed as what it is. **No real user traffic has ever
+reached this platform.** A graph is more persuasive than a caveat, which is why
+the caveat is in four places.
 
 ## Getting in from outside
 
@@ -479,17 +654,38 @@ work, are in [runbook.md](runbook.md).
 
 ## Cost, and what is tagged
 
-Running costs about **$0.26 an hour**: roughly $0.10 for the control plane,
-$0.083 for two nodes, $0.045 for a single NAT gateway, $0.025 for the load
-balancer, and half a cent for a public address. Around $190 a month if left up,
-which is why the platform is built to be torn down between working sessions and
-rebuilt from this repository. Everything inside the cluster is reconciled from
-source control, so rebuilding costs time rather than work.
+Running costs **$0.34 an hour**, measured from a billed day rather than
+assembled from published rates:
 
-That is an estimate assembled from the published rates. Measured against a full
-day of running, the actual figure was **$0.235 an hour** — close enough to
-trust the estimate, and different enough to be worth quoting the measurement
-instead.
+| | per hour |
+|---|---|
+| three nodes | $0.114 |
+| cluster control plane | $0.100 |
+| address translation, storage, data transfer | $0.097 |
+| load balancing | $0.028 |
+
+About $250 a month if left up, which is why the platform is built to be torn
+down between working sessions and rebuilt from this repository. Everything
+inside the cluster is reconciled from source control, so rebuilding costs time
+rather than work.
+
+**Every estimate in this repository before this one was low, and the reason
+generalises.** The figures quoted previously were built from instance and
+control-plane rates — the prices that are easy to look up — and omitted the two
+lines that are metered by use. Address translation alone is a tenth of a dollar
+an hour here, comparable to the control plane and larger than the load
+balancer, and it is charged per gigabyte processed rather than per hour
+running. So the number rises with image pulls: a day of rebuilding and
+redeploying costs more per hour than a day of running the same thing unchanged.
+
+Anyone sizing a cluster from the first two lines of that table would be about
+twenty percent light. That is not a large error in absolute terms here, and it
+is the kind that scales with activity rather than with what is installed, which
+makes it the kind that surprises people.
+
+Two charges continue with the cluster torn down: the stored secrets and the key
+that encrypts them, about three cents a day together. They are the only things
+in this platform that survive a teardown, deliberately.
 
 The nodes were the most recent thing to change, and the reason is worth stating
 because it is the normal life of a sizing decision rather than a correction. The
@@ -552,8 +748,9 @@ report.
 ## What is deliberately absent
 
 No remote state: state is a local file, and the two configurations share only
-the cluster's name rather than reading each other's state. No progressive
-delivery, no release windows. Each is deferred rather than forgotten.
+the cluster's name rather than reading each other's state. No release windows
+for the batch worker yet. No blue/green, no service mesh, and no promotion to a
+second environment by anything other than a person editing a line.
 
 **No logs, and no alerting.** Both are absent on purpose rather than pending.
 Metrics answer whether a service is healthy; logs answer why it is not, and the
