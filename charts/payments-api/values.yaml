@@ -93,6 +93,21 @@ route:
 # chose, and leaving it would have meant the schedule was decided by whatever
 # was convenient to watch.
 canary:
+  # How long a release may make no progress before it is given up on, and
+  # whether giving up actually does anything. Both measured against a release
+  # that needed them rather than left at defaults — see the rollout template.
+  #
+  # Seventeen seconds is when the readiness probe declares failure. Two
+  # minutes is seven times that, which covers an image pull onto a cold node
+  # and little else. The default of ten minutes is thirty-five times the
+  # evidence.
+  progressDeadlineSeconds: 120
+  # The default reports the deadline and takes no action, which leaves a
+  # replica set that will never work holding a pod slot until a person
+  # intervenes. A release that needs a human to finish failing is not a
+  # release that withdraws itself.
+  progressDeadlineAbort: true
+
   steps:
     # Ten percent first, and the reason is the measurement rather than the
     # exposure. At the measured traffic of 4.87 requests a second, ten percent

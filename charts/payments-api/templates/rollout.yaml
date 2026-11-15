@@ -29,6 +29,36 @@ spec:
     matchLabels:
       app.kubernetes.io/name: payments-api
 
+  {{- /*
+  How long a release may make no progress before it is abandoned, and whether
+  being abandoned means anything.
+
+  Both of these were left at their defaults until a release was run that
+  needed them, and the run is what showed the defaults were wrong here.
+
+  A version whose readiness check fails never becomes ready, so the controller
+  never moves any traffic to it and the release stops at the first step. No
+  user is affected — the weights never leave the trusted version, and every
+  request during ten minutes of this was served correctly. But at the default
+  the release then simply sits there: the deadline is reported and not acted
+  on, so a replica set that will never work stays scheduled, holding a pod
+  slot in a namespace with a ceiling, waiting for somebody to notice.
+
+  "Withdrawn without anybody acting" is the property this platform claims, and
+  a release that stalls until a human intervenes does not have it. So the
+  deadline now aborts rather than only reporting.
+
+  Two minutes rather than ten. The readiness probe here declares failure after
+  about seventeen seconds — two seconds before the first check, then three
+  checks five seconds apart. Ten minutes to react to something established in
+  seventeen seconds is not caution, it is thirty-five times longer than the
+  evidence takes to arrive. Two minutes leaves generous room for a legitimate
+  slow start, including pulling an image onto a node that has never run it,
+  and is the only thing here measured against the probe it is waiting on.
+  */}}
+  progressDeadlineSeconds: {{ .Values.canary.progressDeadlineSeconds }}
+  progressDeadlineAbort: {{ .Values.canary.progressDeadlineAbort }}
+
   strategy:
     canary:
       {{- /*
