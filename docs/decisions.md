@@ -2022,3 +2022,123 @@ copies on the trusted version, two on the version being tried, a batch run,
 and the sender — and a ceiling that is exactly met rejects the next pod, which
 would stall a release with traffic already split. Processor and memory were
 never close: a quarter of the processor ceiling and a sixth of the memory one.
+
+---
+
+## What a release is judged on, and the thresholds in it
+
+This is the deliverable of this phase. The controller, the router and the
+weighting all existed before this repository; the numbers below are what it
+supplies, and they are chosen against this service rather than against
+whatever makes a release succeed.
+
+### The finding the whole design turns on
+
+**The service's own error counter cannot see either way this service can
+fail.**
+
+Both failure switches act on the health endpoints. The handler that serves
+requests returns success unconditionally — measured across 8,421 requests,
+every one of them successful, across every version ever run. So a candidate
+that never becomes ready is never sent a request and reports **no failures at
+all**. Its error rate is zero because it is dead.
+
+To a query that sums failures, "answering everything correctly" and "not
+answering" are the same answer. A gate built only on the share of requests
+failing would therefore pass a version that is serving nothing, on a perfect
+record.
+
+This is the third time this platform has produced that shape. A sum over a
+selector matching nothing returns no series rather than zero. A scheduled job
+that silently stops being scheduled increments no failure counter. The pattern
+is worth naming: **every measurement of failure needs a companion measurement
+that the thing is running at all**, because absence and perfection are
+indistinguishable to anything that counts.
+
+### The schedule
+
+Ten percent of traffic, then thirty, then sixty, holding three minutes at
+each.
+
+**Ten first, and the reason is the measurement rather than the exposure.** At
+the measured traffic of 4.87 requests a second, ten percent gives the
+candidate about half a request a second, or roughly 58 requests in a window.
+That is the smallest sample in which a failure is distinguishable from
+silence. At five percent the window holds 29 requests and a single failure is
+3.4 percent of the sample, so the measurement becomes coarser than any
+threshold worth setting — and a failing version is then **more** likely to
+clear the first gate and be promoted to a weight where it does more harm.
+Below a certain weight, a smaller first step makes a release less safe, which
+is not obvious and is why this number is not simply as small as possible.
+
+**Rejected: five percent for five minutes**, which is the example in most of
+the documentation for this kind of tool. It is not wrong in general and it is
+unjustifiable here, because at this service's traffic the first window would
+not hold enough requests to read.
+
+**Three minutes at each step** is six scrapes at the collector's thirty-second
+interval. Two minutes gives four samples and one gives two, and a rate
+computed from two samples is a difference rather than a rate. A longer pause
+costs release time but not exposure to a bad version, because how quickly a
+release is abandoned is set by the gate's own interval and tolerance rather
+than by how long a passing step waits. That asymmetry is what makes the more
+conservative number cheap.
+
+### The gate
+
+Three measurements every thirty seconds — one per scrape, because asking more
+often than the data changes re-reads the same samples and makes one transient
+look like several independent observations. Three failed measurements abandon
+the release, so a candidate must look wrong for about ninety seconds.
+
+**The candidate is serving at least 0.1 requests a second.** A fifth of what
+the smallest step should produce. This exists because of the finding above,
+and it is the only one of the three that catches the most likely failure.
+
+**No more than one percent of its real requests failed.** Probe paths
+excluded, both halves guarded against matching nothing, the denominator
+clamped — the last two being the correction to a bug this repository shipped
+twice, where a ratio read "no data" at exactly the moment the service was
+healthiest.
+
+**The precision of "one percent" is partly a fiction and saying so is the
+point.** At 58 requests in a window, one failure is 1.7 percent; there is no
+sample in which this gate can read one percent. It means, in practice, that
+any failed request is a breach, and the tolerance for a transient lives in the
+number of breaching measurements rather than in a looser percentage. A service
+with real traffic would make this a genuine proportion and could afford a
+smaller tolerance. Here the two numbers trade roles, and a reader who assumes
+the threshold is doing the work would be reading it wrong.
+
+**Its 95th percentile request duration stays under ten milliseconds.** This
+one is nearly blind and is kept anyway. Every one of those 8,421 requests fell
+in the histogram's smallest bucket, five milliseconds, and the true mean is
+nine microseconds — so the reported percentile is interpolation inside a
+bucket containing every observation, not a measurement. The gate can detect
+only a regression large enough to cross five milliseconds, a factor of roughly
+five hundred. It cannot see a service that becomes ten times slower.
+
+**Rejected: removing it.** A candidate that is slow without failing is a real
+way to be worse, and the other two measurements cannot see it at all.
+**Rejected: a tighter value.** The idle reading is 4.75 milliseconds, so
+anything lower sits a rounding error from its own threshold.
+
+The limit is in the bucket boundaries chosen when the metric was added, not in
+the threshold. Correcting it means re-bucketing the histogram, which means
+changing a service, which is not this phase's business.
+
+### Accepted cost
+
+Every number here is calibrated against a traffic rate that is generated, not
+earned. At 4.87 requests a second the sample in a window is small enough that
+the error threshold cannot express itself honestly, and the compensation —
+putting the tolerance into the count of bad measurements instead — is a
+workaround for low volume rather than a principle. A reader taking these
+numbers to a service with real traffic should move the tolerance down and the
+threshold's precision up, and the reason this is stated rather than quietly
+left is that the numbers would otherwise look transferable.
+
+The second cost is slower releases. Nine minutes of weighting and waiting for
+a change that a plain replacement would have applied in under a minute. That
+is the price of finding out, and it is only worth paying for a service where
+being wrong in front of users costs more than nine minutes does.
