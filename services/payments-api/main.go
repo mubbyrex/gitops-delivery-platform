@@ -154,6 +154,14 @@ func main() {
 			})(w, r)
 			return
 		}
+		// The version in this line is doing more work than it looks like.
+		// While two versions are serving at once, it is the only way to find
+		// out which one answered a given request without asking the cluster.
+		// That matters because a traffic weight is a claim the cluster makes
+		// about itself: the configuration says half the requests go to the new
+		// version, and the only evidence that they do is a client outside the
+		// cluster counting the replies. Measured once with a fifty-fifty
+		// split: forty requests, twenty of each.
 		instrument("/", func(w http.ResponseWriter, r *http.Request) int {
 			fmt.Fprintf(w, "payments-api %s — a stub. It settles nothing.\n", cfg.version)
 			return http.StatusOK
