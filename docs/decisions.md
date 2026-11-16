@@ -2220,3 +2220,77 @@ is more likely to be a stored object than a pod.
 
 Fifteen free slots during a release is room for that and for being wrong about
 it once.
+
+---
+
+## The mechanism that holds releases during a batch run was not built, because it already exists
+
+This phase was scoped to build one. The premise was measured before anything
+was built against it, and the premise was false.
+
+**What the plan assumed.** That a release landing while a settlement run is in
+progress could put two versions on one batch, and that something had to hold
+releases until runs finished.
+
+**What is actually true.** A synchronisation three minutes twenty-five seconds
+into a four-minute run did not touch the run. Same identifier throughout, same
+image, finished normally on the old version. The schedule picked up the new
+version for the next run.
+
+The reason is ownership. The repository declares a schedule; the runs that
+schedule creates belong to it and carry no tracking annotation from the
+delivery controller at all. A synchronisation updates the template and has
+nothing to say about a run already in progress.
+
+**Decision. Build nothing. State the guarantee, attribute it honestly, and
+demonstrate where it stops.**
+
+**Rejected: synchronisation windows.** The original plan, and the obvious tool.
+Periods during which the delivery controller will not apply changes, aligned
+with the schedule so that releases avoid runs. Rejected because a release
+during a run is not dangerous, so the windows would deny releases for a
+quarter of every hour in exchange for nothing — and would have to be kept
+aligned by hand with a schedule they cannot read. A guard whose only effect is
+to delay safe things is not a safety feature.
+
+**Rejected: a check that refuses to synchronise while a run is active.**
+Technically possible as a pre-synchronisation step. Rejected on the same
+ground, and on two of its own: a refused synchronisation is reported as a
+failure rather than as a wait, so the operator sees an error where the truth is
+"not yet"; and the check is itself a workload that has to be scheduled, which
+spends the capacity the phase would be protecting.
+
+**Rejected: building something anyway, to have built something.** The honest
+version of the temptation. A phase that reports the platform already works
+looks like a phase that did nothing, and there is real pressure to produce a
+mechanism as evidence of attention. Declined, because the project's own rule
+is that reimplementing what the platform provides is the failure mode to avoid,
+and this would have been the clearest instance of it in six phases.
+
+**Accepted cost, and it is not small.**
+
+The guarantee is inherited rather than engineered, which means nothing in this
+repository protects it. A future change that moves the worker from a schedule
+to something else — a long-running process, a queue consumer, anything that
+keeps its own state between runs — loses the property silently, because
+nothing here is asserting it. There is no test that fails.
+
+The boundary is also sharper than the guarantee sounds. **Renaming or removing
+the workload destroys a run in flight**, demonstrated rather than inferred: a
+run four seconds old was destroyed along with the entire retained history of
+previous runs, and the delivery controller reported the application healthy
+throughout.
+
+That history matters more than it first appears. The worker's health is
+answered from the cluster's record of its finished runs, because the process
+writes its outcome in the instant before it exits. Destroying that record
+leaves the indicator with nothing to read, which is indistinguishable from a
+worker that silently stopped. The failure erases the evidence of itself, and
+nothing reports it, because by the delivery controller's definition nothing is
+wrong — what is committed is what is running.
+
+So the accepted cost of building nothing is that the one real edge is guarded
+by a comment in a chart and a paragraph in the architecture document, rather
+than by a mechanism. For a reference platform that is the right trade. For a
+production system it would not be, and the difference is worth stating because
+a reader may be running one.

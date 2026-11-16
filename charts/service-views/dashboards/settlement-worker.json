@@ -64,7 +64,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "This service **does not exist most of the time**. It runs about thirty seconds, then exits, so absence is normal and *is it up* is not a question with a yes.\n\nEvery number here except the version comes from the **cluster's record of the runs**, not from the service. The service writes its outcome and duration in the instant before it exits \u2014 its own duration gauge reports `0` while the cluster reports the true figure.\n\n**Time since last success** is the one to read first. It is the only panel that treats *nothing happening* as a signal: a worker that silently stops being scheduled produces no failures and no errors, the numbers simply stop. Watch it against the schedule period below.\n\nInterrupted and failed look the same here \u2014 the cluster does not draw that distinction, though the service does. No panel declares a number too late or too long."
+        "content": "### Did it run, and did it work?\n\nThis worker is a scheduled job. It starts, does its work, and exits \u2014 so it cannot report its own health the way a service can. Everything here is read from the cluster's record of its finished runs.\n\n**Three states, and two numbers to tell them apart:**\n\n| | time since last **success** | time since last **scheduled** |\n|---|---|---|\n| running normally | under one period | under one period |\n| runs skipped or failing | **climbing** | under one period |\n| silently stopped | **climbing** | **climbing** |\n\nThe second column is the one that is easy to leave out. Nothing increments when a scheduled job stops being scheduled \u2014 there is no failure to count, because nothing ran to fail. Absence is the signal.\n\n**Both read empty after the workload is renamed**, because renaming it deletes every run it ever created, including the history these panels read. That looks identical to a worker that has stopped."
       }
     },
     {
@@ -260,6 +260,63 @@
     },
     {
       "type": "stat",
+      "title": "Time since last scheduled",
+      "description": "The measurement that separates a worker being SKIPPED from a worker that has STOPPED. Both make 'time since last success' climb, and only this one tells them apart: if the schedule is still firing, runs are being skipped or failing; if this is climbing too, nothing is being scheduled at all and no counter anywhere will say so. It also reads empty after the workload is renamed, because renaming it destroys the record of every run it ever had.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
+          "instant": false,
+          "legendFormat": "seconds"
+        }
+      ]
+    },
+    {
+      "type": "stat",
       "title": "Runs succeeded (retained)",
       "description": "Only retained history is counted, so this plateaus rather than growing forever.",
       "datasource": {
@@ -267,10 +324,10 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 8,
-        "y": 5
+        "x": 13,
+        "y": 5,
+        "w": 5,
+        "h": 4
       },
       "fieldConfig": {
         "defaults": {
@@ -326,10 +383,10 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 16,
-        "y": 5
+        "x": 18,
+        "y": 5,
+        "w": 6,
+        "h": 4
       },
       "fieldConfig": {
         "defaults": {

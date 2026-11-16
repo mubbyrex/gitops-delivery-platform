@@ -273,6 +273,90 @@ that consistently overruns pushes each subsequent run later until one finally
 exceeds the lateness allowance and is genuinely dropped. The cost is drift
 rather than loss, and neither condition is alarmed on yet.
 
+## Releasing the batch worker: what is guaranteed, and where it stops
+
+The request-serving service is released in weighted steps because two versions
+can serve at once without interfering. For the settlement worker, two versions
+at once **is** the hazard, so it is released by replacement — and the question
+that matters is what happens if a release lands while a run is in progress.
+
+### The guarantee
+
+> A release applied while a settlement run is in flight cannot change that run.
+> The run completes on the version it started with, and the next scheduled run
+> uses the new version.
+>
+> This holds because the repository declares a **schedule**, and the runs that
+> schedule creates are owned by it rather than tracked by the delivery
+> controller. A synchronisation updates the schedule's template and has no
+> relationship with a run already in progress.
+>
+> **It does not hold if the release removes or renames the schedule itself.**
+
+That is written as a claim with a mechanism attached because it can then be
+checked, and because the mechanism is the part people get wrong.
+
+Measured rather than asserted: a synchronisation landed three minutes
+twenty-five seconds into a four-minute run. The run's identifier did not
+change, its image did not change, and it finished normally on the old version
+while the schedule picked up the new one for next time.
+
+### Who actually provides it
+
+This is the uncomfortable part, and stating it is the point.
+
+| part of the guarantee | provided by | configured here? |
+|---|---|---|
+| a sync cannot reach a run already going | object ownership | **no** |
+| two runs never overlap | the scheduler's concurrency setting | yes |
+| a failed run is never retried over the same batch | the absence of retries | yes |
+
+Only the second and third are decisions this repository made. The first — the
+one that makes a release safe mid-run — is how ownership works in Kubernetes.
+Nothing here configured it and nothing here should take credit for it.
+
+That distinction matters more than it looks. A platform that cannot tell its
+inherited properties from its engineered ones will eventually defend the wrong
+one, or rebuild something it already had.
+
+### Where it stops
+
+**Renaming or removing the workload destroys a run in flight.** The runs carry
+an owner reference back to the schedule with deletion blocking set, so removing
+the schedule takes them with it. A rename is exactly that: the delivery
+controller sees one object newly declared and one no longer declared, creates
+the first and removes the second.
+
+Demonstrated rather than inferred from the field. A run four seconds old was
+destroyed, and so was the entire retained history of previous runs.
+
+That second loss compounds the first. The worker's health is answered from the
+cluster's record of its finished runs, because the process cannot report its
+own outcome — it writes the result in the instant before it exits. Deleting
+that record leaves the indicator with nothing to read, which looks identical to
+a worker that has silently stopped. **The failure erases the evidence of
+itself.**
+
+And through all of it the delivery controller reported the application healthy,
+correctly by its own definition: what is committed is what is running. It has
+no concept of a batch of payments abandoned half-way.
+
+So the practical rule, which now sits in the chart beside the line it concerns:
+changing the image is safe at any moment, and changing the name is not.
+
+### What is not covered
+
+A run whose pod dies part-way — evicted, drained, or killed by the node —
+leaves a batch half-settled, and nothing described here addresses it. Retries
+are deliberately off, so the work is not reattempted; the next run starts
+fresh. Whether that is safe depends on whether settling the same batch twice is
+harmful, which in this scenario it is.
+
+That is recovery, and it is deliberately a separate problem from release
+safety. It is named here rather than left as an implication, because a reader
+who takes "releases are safe" to mean "runs are safe" has been misled by
+omission.
+
 ## Is it healthy? Where the answer comes from
 
 A collector runs in the cluster, gathers numbers from both services, and keeps
