@@ -7,7 +7,10 @@
 # runs twice an hour is tedious to observe.
 schedule: "*/5 * * * *"
 
-version: "dev"
+# Changed while a run was deliberately in flight, to establish what a release
+# landing mid-run actually does to that run. The version string is carried on
+# the pod template, so changing it is a release in every sense that matters.
+version: "dev-2"
 
 image:
   digest: sha256:77985657398ac57968bde3421d9d23cc8129cbb3457407be8e7bc33166454385  # built from 0154a5299bd6
