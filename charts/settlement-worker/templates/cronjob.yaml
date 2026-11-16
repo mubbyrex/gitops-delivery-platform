@@ -9,17 +9,25 @@ The one line that matters most in this file is concurrencyPolicy, below.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  # TEMPORARY RENAME. Reverted immediately after the observation.
-  #
-  # Renaming a workload is an ordinary thing to do, and it is the one edge
-  # where the guarantee this phase states does not hold. The delivery
-  # controller sees a new object and an old one that is no longer declared, so
-  # it creates the first and removes the second — and a run in flight belongs
-  # to the second, with blockOwnerDeletion set.
-  #
-  # This is here to find out what that actually does to a run, rather than to
-  # infer it from a field.
-  name: settlement-worker-renamed
+  {{- /*
+  The name is load-bearing in a way a name usually is not, and it was
+  established by renaming it and watching what happened.
+
+  A rename is not an edit to this object. The delivery controller sees one
+  object that is newly declared and one that is no longer declared, so it
+  creates the first and removes the second — and every run this schedule has
+  ever created belongs to the second. They go with it, including one that is
+  in progress at the time.
+
+  Measured: a settlement run four seconds old was destroyed, along with the
+  whole retained history of previous runs, and the controller reported the
+  application healthy throughout.
+
+  So: changing the image here is safe at any moment, and changing this line is
+  not. If it ever has to change, it changes when no run is in flight and with
+  the knowledge that the record of past runs goes too.
+  */}}
+  name: settlement-worker
   labels:
     app.kubernetes.io/name: settlement-worker
     app.kubernetes.io/managed-by: argocd

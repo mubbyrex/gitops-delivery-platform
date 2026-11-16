@@ -18,20 +18,8 @@ image:
 # Shorter than the gap to the next run, so that normal operation does not
 # constantly exercise the overlap path. Making a run outlast its schedule is
 # done deliberately when demonstrating that overlap is refused.
-# TEMPORARY, and an observation aid rather than a safety change.
-#
-# A run of thirty seconds in every five minutes is in flight about a tenth of
-# the time, and the delivery controller polls every few minutes — so a sync
-# would almost never land inside a run, which is the exact moment this phase
-# needs to watch. Four minutes makes a run cover most of its own period, so
-# the overlap happens rather than being waited for.
-#
-# Nothing about the worker's safety is touched by this. The refusal to overlap
-# runs, the lateness allowance and the absence of retries are all unchanged.
-# This is how long the stub pretends to work, and it is reverted once the
-# observation is made.
 run:
-  forSeconds: 240
+  forSeconds: 30
   itemCount: 30
 
 failure:
