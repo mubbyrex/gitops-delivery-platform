@@ -36,9 +36,14 @@ image:
 # takes real traffic, and then dies — which is the case the gate exists for,
 # and the case the obvious gate misses, because a version that serves almost
 # nothing fails almost nothing.
+# DELIBERATELY BROKEN, to settle something the previous phase configured and
+# never exercised. A version that never becomes ready stalls its release, and
+# the deadline that gives up on a stalled release was reduced from ten minutes
+# to two — then the repair arrived before it could act, so the setting has
+# never fired. This is that demonstration.
 failure:
   liveness: false
-  readiness: false
+  readiness: true
 
 readyAfterSeconds: 0
 
