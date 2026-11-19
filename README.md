@@ -1,116 +1,187 @@
 # Kestrel Pay — GitOps delivery platform
 
-A Kubernetes delivery platform for a payments company that does not exist,
-built to work through one problem that most reference architectures step
-around: what to do when two workloads in the same system cannot be released
-the same way.
+A reference platform that demonstrates one thing: **two workloads whose release
+requirements genuinely conflict, delivered differently on purpose, with the
+reasoning written down beside the configuration.**
 
-The company and its services are invented. [`scenario.md`](scenario.md) says
-so on its first line and describes the two workloads in full.
+The scenario is invented and [`scenario.md`](scenario.md) says so plainly.
+Kestrel Pay does not exist, no real money moves, and the two services are stubs
+with a health endpoint, a metrics endpoint and a switch that makes them fail.
+
+---
 
 ## The problem it exists to answer
 
-`payments-api` is a stateless HTTP service. Two versions can serve traffic at
-once without interfering, a small share of traffic is a small share of the
-harm, and a bad release shows up in the error rate within seconds. It can be
-released gradually: send the new version a slice of live traffic, measure, and
-either widen the slice or take it away.
+Gradual release rests on three assumptions that are so reliably true of
+stateless web services they usually go unstated: that two versions can coexist,
+that exposure can be metered, and that you find out you were wrong while the
+exposure is still small.
 
-`settlement-worker` is a batch job that pays merchants. Its output is money
-leaving an account. Two versions running against the same batch both decide a
-payout is owed, and the merchant is paid twice — and the second payment has
-already left before anyone notices. There is no small slice, and rolling back
-is not a remedy.
+**`payments-api`** satisfies all three. It is a stateless HTTP service, so a
+request handled by the old version and one handled by the new have nothing to
+do with each other, ten percent of traffic is ten percent of the consequence,
+and the error rate moves within seconds.
 
-Gradual release depends on assumptions so reliably true of web services that
-they usually go unstated. The worker satisfies none of them. A platform that
-applies one release strategy to both has misread at least one of them, and the
-difference between the two is what this repository is about.
+**`settlement-worker`** satisfies none of them. It is a scheduled batch job
+that pays merchants. Two versions running at once is not a mitigation, it is
+the failure — both read the same unsettled payments, both decide a payout is
+owed, and the merchant is paid twice. Ten percent of a settlement run is not a
+safe experiment. And the damage is invisible until a reconciliation report
+hours later.
 
-## What exists today
+**So the same release mechanism cannot be correct for both.** The API is
+released in weighted steps with an automated gate. The worker is released by
+replacement and must never run twice at once. The asymmetry is the point, and a
+platform that applies one strategy uniformly has misread at least one of them.
 
-The provisioning layer and the handover to GitOps:
+---
 
-- A VPC across two availability zones, and an EKS cluster with a managed node
-  group in private subnets
-- Workload identity, so a pod can assume an AWS role through its service
-  account
-- Argo CD, installed by Terraform, pointed at [`argocd/root/`](argocd/root/)
-  in this repository with automatic sync, prune, and self-heal on
+## What is here
 
-That last part is the end of the provisioning story and the start of
-everything else: from there, what runs in the cluster is decided by what is
-committed here rather than by what someone applies from a workstation.
+Everything below is built and running, not planned.
 
-**Nothing is deployed through it yet.** The watched path holds a placeholder,
-the controller reports healthy against an empty set, and the two services
-above are not built. Ingress, secrets management, observability and
-progressive delivery come later. The diagrams mark planned components with
-dashed outlines so it is clear which is which.
+| | |
+|---|---|
+| **Provisioning** | a VPC across two availability zones, an EKS cluster, three nodes in private subnets, workload identity |
+| **Delivery** | Argo CD, installed by Terraform and pointed at [`argocd/root/`](argocd/root/) — after that, what runs is decided by what is committed here |
+| **Ingress** | Traefik, driven through the Gateway API rather than vendor annotations |
+| **Secrets** | External Secrets, reading AWS Secrets Manager through EKS Pod Identity |
+| **Measurement** | Prometheus and Grafana, with one committed dashboard per service |
+| **Progressive delivery** | Argo Rollouts — the API releases 10% → 30% → 60% → 100%, three minutes and a gate at each step |
+| **Pipeline** | GitHub Actions builds, scans, publishes and commits an image digest. It holds no cluster credential and no cloud credential |
+
+### The release gate, which is the actual deliverable
+
+Three measurements every thirty seconds; three failures abandon the release.
+
+1. **Is the candidate serving at all?** ≥ 0.1 requests/second
+2. **What share of its real requests failed?** ≤ 1%
+3. **How long did they take?** 95th percentile ≤ 10 ms
+
+The first one is there because of something found by reading the service
+closely: a version that cannot stay up serves almost nothing and therefore
+*fails* almost nothing. **A gate built on error rate alone would promote a dead
+version on a perfect record.** That is not theoretical — it is demonstrated,
+and the numbers are in [`docs/decisions.md`](docs/decisions.md).
+
+---
 
 ## Reading it
 
-- [`docs/architecture.md`](docs/architecture.md) — the system as built, with
-  diagrams, and where the ownership boundaries sit
-- [`docs/decisions.md`](docs/decisions.md) — every choice that had a real
-  alternative, what was rejected, and what the choice costs. Each entry
-  carries an accepted cost, because a decision that appears to cost nothing
-  was not a decision
-- [`scenario.md`](scenario.md) — the invented scenario, in full
+Start here, in this order:
+
+- [`scenario.md`](scenario.md) — the invented scenario and why the two
+  workloads conflict
+- [`docs/architecture.md`](docs/architecture.md) — the system as built, the
+  ownership boundaries, what it costs, and **what this platform does not do**
+- [`docs/decisions.md`](docs/decisions.md) — every choice with a real
+  alternative, what was rejected, and what the choice costs. Each entry carries
+  an accepted cost, because a decision that appears to cost nothing was not one
+- [`docs/runbook.md`](docs/runbook.md) — what to do when something is wrong
+
+### Where things live
+
+```
+terraform/cluster/     network, EKS, nodes, identity      — applied first
+terraform/platform/    Argo CD and the root Application   — applied second
+argocd/root/           one file per component Argo CD manages
+charts/                one chart per service, identical across environments
+environments/<env>/    the only place environments differ
+services/              the two Go stubs
+scripts/               up, down, status, validate
+local/                 a kind cluster for work that does not need AWS
+```
+
+Promotion from dev to staging is a person editing the image digest in
+`environments/staging/<service>.yaml`. The pipeline only ever commits to dev.
+
+---
 
 ## Running it
 
-Two Terraform configurations, applied in order. They share one value — the
-cluster name — and are otherwise independent; the second finds the cluster
-through the AWS API rather than by reading the first one's state.
+**You need two secrets in AWS Secrets Manager before this will work.** This
+repository does not create them, because a secret committed is a secret
+published:
+
+| secret | holds |
+|---|---|
+| `kestrel-pay/platform/argocd-admin` | the console password, as a bcrypt hash |
+| `kestrel-pay/dev/demo` | a demonstration value the secret store reads |
+
+Without the first, the console password is regenerated on every rebuild.
+Without the second, an application stays unhealthy. See
+[`docs/runbook.md`](docs/runbook.md) for creating them.
+
+Then:
 
 ```bash
-cd terraform/cluster
-terraform init
-terraform apply \
-  -var 'cluster_name=kestrel-pay-dev' \
-  -var "endpoint_allowed_cidrs=[\"$(curl -s https://checkip.amazonaws.com)/32\"]"
-
-aws eks update-kubeconfig --name kestrel-pay-dev --region us-east-1 --alias kestrel-pay-dev
-
-cd ../platform
-terraform init
-terraform apply -var 'cluster_name=kestrel-pay-dev'
+./scripts/up.sh       # build everything, point kubectl at it, wait until healthy
+./scripts/status.sh   # what exists, and what it is costing
+./scripts/down.sh     # destroy everything
 ```
 
-Reach the delivery controller by tunnelling to it — nothing is exposed to the
-internet:
+A rebuild takes about five minutes. The scripts apply and destroy without
+prompting, which is right for a person at a keyboard and is why nothing
+automated runs them.
+
+**Use the scripts rather than calling Terraform directly.** They are not a
+convenience wrapper. Among other things they point the build at an empty
+container-registry credential store, because Helm otherwise reads the
+operator's own credentials and a stale `ghcr.io` login turns an anonymous pull
+of a *public* chart into a 403. Running the two Terraform configurations by
+hand fails with `Error locating chart` on any machine that pushes images to a
+registry — which was established by cloning this repository fresh and trying.
+
+The delivery controller's console is not exposed to the internet. Reach it by
+tunnelling, and log in with the password from the secret above:
 
 ```bash
 kubectl port-forward -n argocd svc/argo-cd-argocd-server 8080:443
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 
-Then open `https://localhost:8080` as `admin`. The certificate is self-signed
-and the password is regenerated every time the cluster is built.
+---
 
-Tear down in the opposite order: `platform` first, then `cluster`.
+## What it costs
 
-## What it costs, and the trade it makes
+**Between $0.35 and $0.42 an hour while it is up**, measured on 2026-11-19 in
+`us-east-1` from two separately billed days. Approximate, region-dependent, and
+it will age.
 
-About **$0.19 an hour** while it is up — roughly $0.10 for the EKS control
-plane, $0.045 for a single NAT gateway, and $0.042 for two small nodes. That
-is around $140 a month if left running, which is why it is built to be torn
-down between working sessions and rebuilt from this repository.
+Roughly: $0.10 for the EKS control plane, $0.10–0.12 for three nodes,
+$0.10–0.20 for the NAT gateway and data, $0.02 for load balancing.
 
-One deviation is worth naming rather than burying. The Kubernetes API
-endpoint is reachable from the internet, restricted to an explicit list of
-addresses that has no default and must be supplied on every apply. A
-private-only endpoint is the right answer for a payments platform carrying
-real traffic, and it also needs a bastion or a VPN to operate, which makes
+**The rate is not constant and the reason matters more than the number.** Every
+line is billed per hour except address translation, which is charged per
+gigabyte — and a rebuild pulls every image through it. So a *short* session
+costs more per hour than a long one. The figure rises with activity rather than
+with what is installed.
+
+About **$0.89 a month continues after a teardown**: the two secrets and the key
+that encrypts them. They are the only things here that survive on purpose.
+
+That is why the platform is built to be parked. Everything in the cluster is
+rebuilt from this repository, so tearing it down costs time rather than work.
+
+### One deviation worth naming
+
+The Kubernetes API endpoint is reachable from the internet, restricted to an
+explicit list of addresses that has no default and must be supplied on every
+build. A private-only endpoint is the right answer for a payments platform
+carrying real traffic, and it also needs a bastion or a VPN, which would make
 this repository considerably harder to read and run. That is a reviewability
-decision, not a security one, and the allowlist is the seam where it would be
-reversed.
+decision rather than a security one, and the allowlist is the seam where it
+would be reversed.
+
+The load balancer in front of the routing layer has **no** such restriction.
+That and four other limits are listed in
+[`docs/architecture.md`](docs/architecture.md) under "What this platform does
+not do".
+
+---
 
 ## What this is not
 
-A reusable tool. It is a reference platform — a set of decisions encoded as
-configuration, with the reasoning written down beside them. Nothing here is
-meant to be depended on, and the services are deliberately trivial stubs: the
-interesting content is in `docs/`, not in the application code.
+A reusable tool. Nothing here should be depended on. The services are
+deliberately trivial stubs and are not going to grow toward implementing
+payment logic — the interesting content is the configuration and the reasoning
+in [`docs/`](docs/), not the application code.
