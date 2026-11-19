@@ -5,6 +5,118 @@ rather than discovered under pressure.
 
 ---
 
+## Bringing it up and taking it down
+
+```bash
+./scripts/up.sh      # build everything, point kubectl at it, wait until healthy
+./scripts/status.sh  # what exists right now, and what it is costing
+./scripts/down.sh    # destroy everything the two configurations own
+```
+
+Those apply and destroy without asking, which is right for a person at a
+keyboard and is why they are not run by anything automated.
+
+**The build will not complete without two secrets that already exist in AWS**,
+and this repository does not create them:
+
+| secret | what it holds | what happens without it |
+|---|---|---|
+| `kestrel-pay/platform/argocd-admin` | the console password, as a hash | the controller's secret is never populated and the password reverts to a generated one that changes on every rebuild |
+| `kestrel-pay/dev/demo` | a demonstration value | the secret store reports a missing reference and the application that reads it stays unhealthy |
+
+They are deliberately outside this repository — a secret committed is a secret
+published — and they are the only things that survive a teardown. See
+"Rotating the password" below for how to create the first one.
+
+**A rebuild takes about five minutes** from nothing to every application
+healthy, most of it waiting for the cluster's control plane. Applications
+arrive in waves and report unhealthy while they wait for their dependencies,
+which is normal for the first few minutes and not a fault.
+
+---
+
+## A release is stuck, or did not happen
+
+**The delivery controller polls every few minutes.** A push does not appear
+instantly, and a change can arrive in two stages — the part owned by a
+service's own application arrives when that application polls, and the part
+held inside an application's configuration arrives only when the root
+application polls and updates it. A push that seems to have half-applied is
+usually this, and waiting is the fix.
+
+**A release of the request-serving service takes about nine and a half
+minutes**, by design: ten percent of traffic, then thirty, then sixty, three
+minutes at each step with a gate between them.
+
+```bash
+kubectl argo rollouts get rollout payments-api -n dev     # if the plugin is installed
+kubectl get rollout -n dev payments-api -o jsonpath='{.status.phase} {.status.message}{"\n"}'
+kubectl get analysisrun -n dev        # one per release; holds every measurement taken
+```
+
+**If it says `Degraded`**, the release was abandoned. The reason is on the
+rollout's `message`, and the measurement that failed — with the value it read
+and the time it read it — is on the analysis run, which outlives the release.
+Traffic is already back on the previous version; nothing needs doing to make
+that happen.
+
+**A release that cannot start at all** — a version that never becomes ready —
+is given up on after two minutes and the candidate is scaled to zero. No
+traffic ever reaches it. Measured at 123 seconds from the version landing to
+the release being abandoned.
+
+To get out of it: commit a working version. There is no button, and rolling
+back is immediate rather than gradual, because the version being returned to
+is the one already known to work.
+
+---
+
+## The settlement worker has stopped running
+
+Two different situations that look identical in a single number, which is why
+the view carries two.
+
+| | time since last **scheduled** | time since last **success** |
+|---|---|---|
+| running normally | under one period | under one period |
+| runs skipped or failing | under one period | **climbing** |
+| **not being scheduled at all** | **climbing** | **climbing** |
+
+The third is the one nothing else will tell you about. No counter increments
+when a scheduled job stops being scheduled — there is no failure to count,
+because nothing ran to fail.
+
+```bash
+kubectl get cronjob -n dev settlement-worker
+kubectl get jobs -n dev                        # the retained history
+kubectl logs -n dev job/<name>
+```
+
+**Both numbers also read empty after the worker has been renamed**, because
+renaming it destroys every run it ever created. If they went blank and the
+workload's name changed recently, that is the cause rather than a stoppage.
+
+---
+
+## Never rename or remove the settlement worker while a run is in flight
+
+Changing its image is safe at any moment. Changing its **name** is not.
+
+The delivery controller sees one object newly declared and one no longer
+declared, so it creates the first and removes the second — and every run that
+schedule ever created belongs to the second. They go with it, including one in
+progress.
+
+Measured: a run four seconds old was destroyed along with the entire retained
+history of previous runs, and the controller reported the application healthy
+throughout. It is correct to do so by its own definition: what is committed is
+what is running. It has no concept of an abandoned batch of payments.
+
+If the name must change, change it when no run is in flight, and know that the
+record of past runs goes with it.
+
+---
+
 ## Getting into the delivery controller's console
 
 The admin password is a bcrypt hash held in AWS Secrets Manager under

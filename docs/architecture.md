@@ -10,11 +10,13 @@ secret held in AWS, and two services that run.
 
 A change to a service reaches the cluster without anyone applying anything —
 edit the source, and a pipeline builds it, scans it, publishes it and commits a
-reference, which the controller picks up. What is not yet built is the part
-that makes the two services interesting: neither is released in the way that
-distinguishes them, nothing yet measures whether a release is going well, and
-no release is gated on the answer. That is the intended stopping point for this
-stage rather than an omission.
+reference, which the controller picks up.
+
+The two services are then released in deliberately different ways, which is the
+part this platform exists to demonstrate. The request-serving service arrives
+in weighted steps with an automated gate between them. The batch worker arrives
+by replacement and must never run twice at once. Both are described below, and
+the asymmetry between them is the argument rather than an inconsistency.
 
 ## The shape of it
 
@@ -23,7 +25,7 @@ stage rather than an omission.
 A single AWS region holds one VPC spanning two availability zones. Public
 subnets carry the internet gateway and a NAT gateway; private subnets carry
 everything else. The managed Kubernetes control plane sits outside the VPC's
-subnets but is reachable from them, and two small instances run as worker nodes
+subnets but is reachable from them, and three small instances run as worker nodes
 in the private subnets.
 
 Inside the cluster, in the order the controller brings them up:
@@ -31,15 +33,24 @@ Inside the cluster, in the order the controller brings them up:
 | | what it is |
 |---|---|
 | routing type definitions | the portable routing API's types, from upstream at a fixed tag |
-| ingress controller | the proxy that accepts requests from outside |
-| secrets operator | reads secrets out of AWS on the cluster's behalf |
+| ingress controller | Traefik — the proxy that accepts requests from outside |
+| secrets operator | External Secrets — reads secrets out of AWS on the cluster's behalf |
+| release controller | Argo Rollouts — owns the weighted release of the request-serving service |
+| metrics stack | Prometheus, with Grafana and the exporters that feed it |
 | secret store and requests | which AWS secrets this platform expects to exist |
 | `dev`, `staging` | one namespace each, with ceilings on what they may consume |
 | `payments-api` | in both environments — a long-running workload that scales by replica count |
 | `settlement-worker` | in both environments — a scheduled job that must never run twice at once |
+| service views | one committed dashboard per service, deployed once rather than per environment |
+| generated traffic | **dev only, and not part of the platform** — see the section on where traffic comes from |
 
-Solid outlines in the diagrams are built. Dashed outlines are planned. The
-colour says which system owns a resource: one for the provisioning tooling, one
+Names are given here once because the prose elsewhere uses roles rather than
+products — "the delivery controller", "the collector" — on the grounds that the
+reasoning transfers and the product may not. That is deliberate, and it costs a
+reader who wants to know what was actually run. This table is the answer.
+
+Both diagrams are of things that exist; nothing in either is planned any more.
+The colour says which system owns a resource: one for the provisioning tooling, one
 for the delivery controller, and one for the things owned by neither, which is
 the distinction the next section is about.
 
@@ -60,11 +71,33 @@ component, so adding a component is a new file in a watched directory rather
 than a change to the thing that bootstraps everything.
 
 **Neither owns a third category**, and this is the one that causes trouble.
-Some resources are created by AWS on its own behalf: the instances behind a
-managed node group come from an auto-scaling group rather than from the
-provisioning tooling, along with their volumes and network interfaces. Others
-are created by controllers running inside the cluster — and there is now one of
-those, covered below. None of them appear in any state file.
+Four kinds, and the last is the most consequential in the whole platform.
+
+**Created by AWS on its own behalf.** The instances behind a managed node group
+come from an auto-scaling group rather than from the provisioning tooling,
+along with their volumes and network interfaces. Provider-level tags never
+reach them, which is why the launch template has to stamp tags itself.
+
+**Created by controllers inside the cluster.** The load balancer in front of
+the routing layer is made by the cloud controller in response to a Service, so
+the provisioning tooling never sees it and its tags ride on an annotation.
+
+**Placed by hand, and never created by anything here.** The two AWS secrets.
+The platform does not build without them and this repository does not create
+them, because a secret committed is a secret published. They are the only
+things that survive a teardown.
+
+**Created by a workload, and owned by it.** Every settlement run. The
+repository declares a *schedule*; the runs that schedule creates belong to the
+schedule and carry no delivery-controller tracking at all.
+
+That last one is not a detail of bookkeeping. **It is the entire basis of the
+batch worker's release guarantee** — a synchronisation updates the schedule's
+template and has no relationship with a run already in progress, which is why
+a release landing mid-run cannot put two versions on one batch. The section on
+releasing the worker sets out what that does and does not cover.
+
+None of these appear in any state file.
 
 Why the three-way split is worth drawing: a resource claimed by two systems is
 reconciled by two systems. The symptom is an Application that flips between
@@ -251,6 +284,14 @@ release safety arriving from one line of configuration, and it is the
 foundation the gradual-release work builds on.
 
 ### What the worker does instead
+
+**Its schedule, stated once because three documents refer to it and none of
+them said it.** The worker runs **every five minutes in `dev` and hourly in
+`staging`**, and a run takes about thirty seconds. So in development it is in
+flight roughly a tenth of the time, and the two environments' runs coincide at
+the top of every hour. Where a measurement below describes a four-minute run,
+the duration was temporarily lengthened to make an observation possible and
+then put back — a run is thirty seconds.
 
 It refuses to overlap. One setting, chosen deliberately from three, and nothing
 built: if a run is still going when the next falls due, the next is not started
@@ -738,38 +779,48 @@ work, are in [runbook.md](runbook.md).
 
 ## Cost, and what is tagged
 
-Running costs **$0.34 an hour**, measured from a billed day rather than
-assembled from published rates:
+Running costs **between $0.35 and $0.42 an hour**, measured on 2026-11-19 from
+two separately billed days in `us-east-1`, rather than assembled from published
+rates. Approximate, region-dependent, and it will age.
 
-| | per hour |
-|---|---|
-| three nodes | $0.114 |
-| cluster control plane | $0.100 |
-| address translation, storage, data transfer | $0.097 |
-| load balancing | $0.028 |
+| | 2026-11-15 | 2026-11-16 |
+|---|---|---|
+| hours the cluster was up | 4.26 | 1.36 |
+| three nodes | $0.121/hr | $0.096/hr |
+| cluster control plane | $0.100/hr | $0.100/hr |
+| **address translation, storage, data** | **$0.108/hr** | **$0.203/hr** |
+| load balancing | $0.024/hr | $0.018/hr |
+| **total while running** | **$0.353/hr** | **$0.417/hr** |
 
-About $250 a month if left up, which is why the platform is built to be torn
-down between working sessions and rebuilt from this repository. Everything
-inside the cluster is reconciled from source control, so rebuilding costs time
-rather than work.
+**The rate is not constant, and the reason is worth more than the number.**
+Every line above is billed per hour except one. Address translation is charged
+per gigabyte processed, and a rebuild pulls every container image the platform
+runs through that gateway. On a long working session that cost spreads over
+many hours; on a short one it does not. So **a short session costs more per
+hour than a long one**, and the shorter it is the worse the ratio.
 
-**Every estimate in this repository before this one was low, and the reason
-generalises.** The figures quoted previously were built from instance and
-control-plane rates — the prices that are easy to look up — and omitted the two
-lines that are metered by use. Address translation alone is a tenth of a dollar
-an hour here, comparable to the control plane and larger than the load
-balancer, and it is charged per gigabyte processed rather than per hour
-running. So the number rises with image pulls: a day of rebuilding and
-redeploying costs more per hour than a day of running the same thing unchanged.
+That also means the figure rises with activity rather than with what is
+installed — which is the opposite of how a cluster's cost is usually assumed to
+behave, and it is why every estimate in this repository before this one was
+low. They were built from instance and control-plane rates, the prices that are
+easy to look up, and omitted the two lines metered by use.
 
-Anyone sizing a cluster from the first two lines of that table would be about
-twenty percent light. That is not a large error in absolute terms here, and it
-is the kind that scales with activity rather than with what is installed, which
-makes it the kind that surprises people.
+The number is traceable to decisions rather than being a fact of nature. One
+NAT gateway instead of one per availability zone, a public API endpoint that
+avoids running a bastion, the smallest instances that clear the per-node pod
+ceiling, and a third node bought against a measured peak — each is recorded in
+[decisions.md](decisions.md) with what it costs.
 
-Two charges continue with the cluster torn down: the stored secrets and the key
-that encrypts them, about three cents a day together. They are the only things
-in this platform that survive a teardown, deliberately.
+**What continues after a teardown is not zero.** About **$0.03 a day**, or
+roughly **$0.89 a month** — the two secrets are about $0.80 of that and the key
+that encrypts them the rest. They are the only things in this platform that survive on purpose, and
+they survive because the delivery controller's own password lives in one of
+them — without it, a rebuilt cluster would come up with a different password
+every time.
+
+Ten encryption keys from previous builds also remain, one per cluster ever
+created. All are pending deletion rather than active, and pending keys are not
+billed — checked rather than assumed. They disappear on their own.
 
 The nodes were the most recent thing to change, and the reason is worth stating
 because it is the normal life of a sizing decision rather than a correction. The
@@ -779,22 +830,34 @@ nineteen of the twenty-two available slots, there was no room for the workloads
 the cluster exists to run, and the sizing that had been right became the sizing
 that had been outgrown.
 
-Adding the collector and its views did not change the hourly cost, because they
-are processes on nodes that were already paid for. What they consume is room.
-Counted on the running cluster: **twenty-eight of thirty-four pod slots in use,
-six free** — and four rather than six at the moment a batch run is in flight in
-both environments, which is the figure worth planning against.
+Processes added to nodes that are already paid for do not change the hourly
+cost. What they consume is room, and room ran out.
 
-The nodes were deliberately not resized to make space for what comes next. The
-estimate made before installing the collector said four slots would remain and
-six did, because it counted the batch worker's pods as though they were always
-present. They exist for about thirty seconds in every ten minutes. Sizing
-against a component that does not exist yet is guessing, and the guess that was
-actually made here was wrong by two in the space of one phase.
+The pod ceiling is set by addresses rather than by processor or memory: the
+networking plugin gives each pod an address from the node's own interfaces, so
+the instance type caps how many pods a node can run long before anything else
+is exhausted. Each node here allows **seventeen**.
 
-Two secrets in AWS add about $0.80 a month and are not torn down with the
-cluster, deliberately — they are what makes a rebuild produce a working
-platform rather than a fresh one.
+Counted on the running cluster at each point it mattered:
+
+| | nodes | slots | used | free |
+|---|---|---|---|---|
+| before progressive delivery, at rest | 2 | 34 | 28 | 6 |
+| before, with a batch run in flight in both environments | 2 | 34 | 30 | 4 |
+| after a third node, at rest | 3 | 51 | 32 | 19 |
+| **with a release running and batch runs overlapping** | 3 | 51 | 36 | **15** |
+
+A third node was added when the arithmetic stopped working: a release
+controller, a traffic generator and a second copy of a service during a release
+came to more than the four free slots that remained at the worst moment, and a
+namespace ceiling that is exactly met rejects the next pod rather than
+queueing it.
+
+The margin came out larger than planned, and the reason is worth keeping. The
+estimate assumed a candidate version scales with its traffic share; it scales
+with the replica count, so at any weight below a hundred percent a two-replica
+service produces **one** extra pod rather than two. Fifteen free where four
+were planned for.
 
 Every resource the provisioning tooling creates carries a project tag applied
 once at the provider level rather than repeated per resource. Two categories
@@ -829,39 +892,100 @@ is. That is a property of the billing system, not a mistake, and it is stated
 here because a cost report that looks complete and is not is worse than no
 report.
 
-## What is deliberately absent
+## What this platform does not do
 
-No remote state: state is a local file, and the two configurations share only
-the cluster's name rather than reading each other's state. No release windows
-for the batch worker yet. No blue/green, no service mesh, and no promotion to a
-second environment by anything other than a person editing a line.
+Seven phases of decisions produced a platform with real limits. They are
+collected here rather than scattered, so that a reader can find out what is
+missing in one sitting instead of inferring it from silence.
 
-**No logs, and no alerting.** Both are absent on purpose rather than pending.
-Metrics answer whether a service is healthy; logs answer why it is not, and the
-second question is a different piece of work with its own storage and its own
-costs. Alerting is switched off in the component that ships it, because nothing
-here pages anybody — and a notification component with no destination
-configured is worse than an absent one, since it looks installed and reports
-healthy while delivering nothing.
+Each of these was raised, considered, and left undone on purpose. None is a
+backlog item.
 
-The gap this leaves is real and worth stating: when a view shows a run failed,
-there is nothing here that says what it failed on. That question currently ends
-at the cluster's own record of the run.
+The smaller absences first, since they are quickly said. There is no remote
+state — state is a local file, and the two configurations share only the
+cluster's name rather than reading each other's. There is no blue/green
+release, no service mesh, and no promotion to a second environment by anything
+other than a person editing a line. The batch worker has **no database**: it
+was considered and refused, because establishing what it stores produced no
+answer, and storage added anyway would have been storage invented to justify
+the mechanism for reaching it.
 
-**No database, and that one is a decision rather than a deferral.** The batch
-worker stores nothing. It was considered carefully and refused, because the
-order of the question — establish what it stores, then decide where that lives
-— produced no answer to the first half. Storage added anyway would have been
-storage invented to justify the mechanism for reaching it.
+The rest are larger.
 
-That has a consequence worth naming. The hazard this whole platform is arranged
-around — two settlement runs paying a merchant twice — is stated in
-`scenario.md` and is never demonstrated here. What is demonstrated is that two
-runs cannot occur. The prevention, not the harm it prevents. Demonstrating the
-harm would require the payment logic this project refuses to write, so the gap
-is permanent and is better stated than papered over.
+### A settlement run that dies part-way is not recovered
 
-The reasoning behind these, and behind everything above, is in
+Retries are off, deliberately: a retry is a second attempt over the same batch,
+which is the same hazard as two versions, separated in time. So a run whose pod
+is evicted or killed leaves its batch half-settled, and the next run starts
+fresh over whatever it finds.
+
+Whether that is safe depends on whether settling a batch twice is harmful,
+which in this scenario it is. **The platform prevents the hazard it was built
+to prevent and does not recover from this one.**
+
+Fixing it means the worker knowing what it already settled, which means
+persistent state, which means the payment logic this project has refused to
+write since the services were created. The refusal is recorded; this is its
+consequence.
+
+### Nothing protects the worker's release guarantee
+
+A release landing mid-run cannot disturb that run, and the reason is object
+ownership rather than anything configured here. That is stated plainly in the
+section on releasing the worker.
+
+The consequence is that **nothing in this repository defends it**. Move the
+worker from a schedule to a long-running process, a queue consumer, or anything
+that holds state between runs, and the property is gone silently. No test
+fails, because there is no test — the guarantee is a property of how the
+objects are owned, not of anything this repository asserts.
+
+### The routing layer is reachable from the internet without restriction
+
+The cluster's API endpoint is restricted to an explicit list of addresses that
+has no default and must be supplied on every build. The load balancer in front
+of the routing layer has no equivalent.
+
+So while the platform is up, anyone who knows the balancer's address and sends
+the right host header gets a reply. Today that reply is a stub saying it
+settles nothing, there is no data behind it and no credential to steal — but
+the two doors into this platform are governed differently and only one of them
+says so.
+
+Closing it is a few lines restricting the balancer's source addresses. It was
+found late and left undone because adding capability in the final phase is how
+a boundary gets quietly moved.
+
+### No logs
+
+Measurements answer whether a service is healthy. Logs answer why it is not,
+and that is a different piece of work with its own storage and its own cost.
+
+The gap is concrete: when a view shows a settlement run failed, nothing here
+says what it failed on. That question ends at the cluster's record of the run.
+
+### No alerting
+
+Every condition described in this document is visible to somebody looking. None
+of them wakes anybody.
+
+The notification component that ships with the metrics stack is switched off
+rather than installed and left unconfigured, because a component that reports
+healthy while delivering nowhere is worse than an absent one.
+
+A number that decides a release and a number that wakes somebody are different
+decisions, and only the first has been made here.
+
+### The double payment is prevented and never shown
+
+The hazard this whole platform is arranged around — two settlement runs paying
+a merchant twice — is described in the scenario and never demonstrated.
+
+What is demonstrated is that two runs cannot occur: the prevention, not the
+harm it prevents. Showing the harm would need the payment logic this project
+does not write. The gap is permanent and is better stated than papered over.
+
+The reasoning behind all of these, and behind everything above, is in
 [decisions.md](decisions.md) — including the costs accepted along the way.
 
 ## Editing the diagrams

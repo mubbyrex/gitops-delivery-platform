@@ -18,6 +18,35 @@ Each entry carries the same fields:
 The last field is the one that matters. A decision that appears to cost
 nothing was not a decision; it was a default that nobody examined.
 
+
+---
+
+## How to read this file
+
+**It is append-only and in chronological order.** Entries are never edited to
+match what came later, because the point of the record is what was known at the
+time. That has two consequences a reader needs before starting.
+
+**Later entries supersede earlier ones without saying so in the earlier one.**
+The node sizing is decided three times — two small instances, then two larger,
+then three — and only the last is current. The same is true of chart fetching,
+of what the per-node agent overhead is, and of several cost figures. **When two
+entries disagree, the later one is current.** Where a later entry knows it is
+reversing an earlier one, it says so; the earlier one is left alone.
+
+**Figures are correct as of the entry that states them.** Every cost number in
+this file predates the measurement in `architecture.md`, which was taken on
+2026-11-19 from two separately billed days and is the current one. The earlier
+figures are kept because the reasoning that produced them is part of the record
+— including the fact that they were systematically low, which is itself an
+entry here.
+
+**The field structure is Context, Decision, Why, Rejected, Accepted cost.** The
+later entries loosen it, and some are closer to essays. The accepted cost is
+always present, because an entry without one was not a decision.
+
+A reader wanting only the current state of the platform should read
+[architecture.md](architecture.md) instead. This file is why, not what.
 ---
 
 ## Two configurations applied in order, not one
@@ -431,7 +460,7 @@ namespaces inside one cluster, a cluster each, or an account each. The usual
 reason given for choosing namespaces is cost, and in this case that reason
 does not survive contact with the numbers.
 
-A second cluster costs about a pound and a half per working session. This
+A second cluster costs about $1.90 per working session. This
 platform is torn down between sessions, so the monthly figure everyone quotes
 is a figure nobody pays. Cost is not what decides this.
 
@@ -863,7 +892,9 @@ mistake being corrected.
 **Rejected: a third node of the current size.** Cheaper, and it looks like the
 obvious answer. Thirty-three slots against thirty-four for two thirds of the
 extra cost. Rejected because each node arrives already owing three pods — it
-runs its own networking agent, service proxy and identity agent — so the
+runs its own networking agent, service proxy and identity agent (**this became
+four when the metrics exporter was added a phase later; the arithmetic below is
+as it stood at the time**) — so the
 thirty-three is really twenty-five usable against the larger pair's
 thirty-four. Per usable slot it is the worse buy, and the arithmetic is only
 visible if you remember that per-node components scale with nodes.
@@ -1142,7 +1173,7 @@ sessions.
 **Decision.** No database. The worker stores nothing.
 
 **Why, and it was not the money.** The smallest usable instance costs about two
-pence an hour against a platform already running at twenty-six. Cost was never
+cents an hour against a platform already running at thirty-five. Cost was never
 going to decide this.
 
 What decided it was insisting on the order: establish what the worker stores,
@@ -2176,6 +2207,12 @@ canary scales with the weight, and it scales with the replica count.
 
 The running cost was projected at about $0.277 an hour when the third node was
 bought. **Measured against a billed day, it is $0.34.**
+
+Measured on **2026-11-13**, from one billed day. Superseded by a two-day
+measurement on 2026-11-19 in [architecture.md](architecture.md), which puts the
+figure between $0.35 and $0.42 depending on how long the session runs — the
+reason being that address translation is billed per gigabyte and a rebuild
+pulls every image through it, so a short session costs more per hour.
 
 | | per hour |
 |---|---|
