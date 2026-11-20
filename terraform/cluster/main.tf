@@ -141,25 +141,14 @@ module "eks" {
   # not one.
   enable_cluster_creator_admin_permissions = true
 
-  # This module turns off the cluster's own bootstrapping of default
-  # components, so nothing installs networking unless it is asked for here.
-  # Left unset, the cluster comes up and its nodes register and then sit at
-  # NotReady forever, because a node without a network plugin can never
-  # report ready. There is no warning and no failed resource; the node group
-  # simply never finishes creating.
+  # The cluster's own bootstrapping is off, so nothing is installed unless it
+  # is asked for here. Versions are literals with tracking off, which makes an
+  # upgrade an edit rather than a side effect of some later apply.
   #
-  # The networking plugin must exist before any node boots, which is what
-  # before_compute asks for. The other two can follow, and the DNS component
-  # has to, since it runs as ordinary pods that need a node to land on.
-  # Versions are pinned to literals and version tracking is switched off.
-  # Left alone this module resolves each addon to whatever is newest at the
-  # moment of the run, which means an unrelated apply months from now would
-  # quietly upgrade the network plugin underneath a running cluster, and two
-  # people applying this same commit would not get the same cluster. Neither
-  # belongs in a platform whose subject is release safety.
-  #
-  # Upgrading is therefore an edit here, made on purpose, rather than a side
-  # effect of applying something else.
+  # The network plugin must exist before any node boots -- before_compute is
+  # what asks for that -- and DNS has to come after, since it runs as ordinary
+  # pods. Getting the order wrong produces no error at all; the consequence is
+  # in docs/architecture.md.
   addons = {
     vpc-cni = {
       before_compute = true
@@ -202,26 +191,13 @@ module "eks" {
       subnet_ids     = module.vpc.private_subnets
 
       # Nothing scales this group. The ceiling sits one above the desired
-      # count purely so a node group update can bring a replacement up
-      # before taking the old node away, rather than running a node short
-      # while it rolls.
+      # count so an update can bring a replacement up before taking the old
+      # node away.
       #
-      # These three numbers are set together when the group is created, and
-      # after that only two of them are still ours. The module ignores later
-      # changes to the desired size, on the assumption that something inside
-      # the cluster scales the group. Nothing here does, so on an existing
-      # group the desired size is owned by nobody and cannot be moved from
-      # this file at all.
-      #
-      # That makes growing a live group a two-step operation rather than an
-      # edit here, because the cloud rejects a floor above the desired size.
-      # Raising this count alone fails: the plan plausibly shows the floor
-      # and the ceiling moving, and the update is refused. The desired size
-      # has to be raised first, outside this configuration and within the
-      # current ceiling, and only then does applying this agree with it.
-      #
-      # None of that applies to building a cluster from nothing, where all
-      # three are set at creation and the count here is simply the count.
+      # Growing a cluster that is already running is NOT an edit here -- the
+      # module ignores later changes to the desired size, so the apply is
+      # rejected however reasonable the plan looked. docs/runbook.md has the
+      # two-step. Building from nothing is unaffected.
       min_size     = var.node_count
       desired_size = var.node_count
       max_size     = var.node_count + 1

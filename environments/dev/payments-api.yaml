@@ -25,9 +25,6 @@ image:
 # Both halves of the failure switch, off. Turning one on is a commit, which is
 # the point — breaking a service deliberately should be as visible and as
 # reversible as any other change.
-# Both halves of the failure switch, off. Turning one on is a commit, which is
-# the point — breaking a service deliberately should be as visible and as
-# reversible as any other change.
 #
 # Both have now been thrown, and they fail differently enough to be worth
 # knowing apart. Readiness failing produces a version that never serves at

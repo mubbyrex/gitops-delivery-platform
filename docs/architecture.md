@@ -37,6 +37,7 @@ Inside the cluster, in the order the controller brings them up:
 | secrets operator | External Secrets — reads secrets out of AWS on the cluster's behalf |
 | release controller | Argo Rollouts — owns the weighted release of the request-serving service |
 | metrics stack | Prometheus, with Grafana and the exporters that feed it |
+| log store and collector | Loki, with one collector per node — answers *why* something failed, where the metrics answer *whether* |
 | secret store and requests | which AWS secrets this platform expects to exist |
 | `dev`, `staging` | one namespace each, with ceilings on what they may consume |
 | `payments-api` | in both environments — a long-running workload that scales by replica count |
@@ -48,6 +49,27 @@ Names are given here once because the prose elsewhere uses roles rather than
 products — "the delivery controller", "the collector" — on the grounds that the
 reasoning transfers and the product may not. That is deliberate, and it costs a
 reader who wants to know what was actually run. This table is the answer.
+
+### The cluster installs nothing on its own
+
+The managed service will bootstrap a default set of components — networking,
+DNS, the storage driver — unless it is told not to. It is told not to here, and
+each component is instead named and pinned to a literal version, with automatic
+version tracking switched off.
+
+Two reasons, and the second is the one that matters for a platform about release
+safety. Left to resolve each component to whatever is newest at the moment of
+the run, an unrelated apply months from now would upgrade the network plugin
+underneath a running cluster as a side effect, and two people applying the same
+commit would not get the same cluster. Upgrading is therefore an edit, made on
+purpose.
+
+**The network plugin has to exist before any node boots**, and is ordered that
+way explicitly. Getting this wrong has no error message: the nodes register and
+then sit at `NotReady` indefinitely, because a node without a network plugin can
+never report ready. Nothing fails and nothing warns — the node group simply
+never finishes creating. The DNS component is the opposite case and must come
+after, because it runs as ordinary pods that need a node to land on.
 
 Both diagrams are of things that exist; nothing in either is planned any more.
 The colour says which system owns a resource: one for the provisioning tooling, one

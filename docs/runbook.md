@@ -35,6 +35,39 @@ which is normal for the first few minutes and not a fault.
 
 ---
 
+## Adding a node to a running cluster
+
+Raising the node count in `terraform/cluster` and applying **will fail**, and
+the plan beforehand looks entirely reasonable.
+
+```
+InvalidParameterException: Minimum capacity N can't be greater than desired size N-1
+```
+
+The reason is that the cluster module deliberately ignores later changes to a
+node group's desired size, on the assumption that something inside the cluster
+scales it. Nothing here does. So on an existing group the desired size is owned
+by nobody: Terraform will not move it, and nothing else will either. An edit to
+the count moves the floor and the ceiling, the floor ends up above the untouched
+desired size, and the cloud rejects it.
+
+Raise the desired size first, outside this configuration and within the current
+ceiling, then apply:
+
+```bash
+aws eks update-nodegroup-config \
+  --cluster-name <cluster> --nodegroup-name <group> \
+  --scaling-config desiredSize=<new count> --region <region>
+```
+
+Then the apply agrees with what is already running.
+
+**None of this applies to building from nothing**, where all three numbers are
+set at creation and the count in the configuration is simply the count. It only
+bites when growing a cluster that is already up.
+
+---
+
 ## A release is stuck, or did not happen
 
 **The delivery controller polls every few minutes.** A push does not appear

@@ -79,59 +79,30 @@ route:
   hostname: ""
 
 # The release schedule: how much traffic an unproven version gets, and for how
-# long, before it gets more.
-#
-# Empty on purpose, and not for long. With nothing here a release still runs
-# through the controller and still moves traffic by weight; it simply never
-# stops anywhere, so there is no point at which anything could be measured and
-# no point at which anything could be withdrawn. That is the plain case, and it
-# is worth having working on its own before anything is added to interrupt it.
-#
-# A fifty percent first step with an indefinite pause stood here while the
-# weighting mechanism was being proved. It was a probe and it was removed: a
-# number that exists to make a demonstration visible is not a number anybody
-# chose, and leaving it would have meant the schedule was decided by whatever
-# was convenient to watch.
+# long, before it gets more. Every number below is derived rather than chosen;
+# the derivations are in docs/decisions.md.
 canary:
-  # How long a release may make no progress before it is given up on, and
-  # whether giving up actually does anything. Both measured against a release
-  # that needed them rather than left at defaults — see the rollout template.
-  #
-  # Seventeen seconds is when the readiness probe declares failure. Two
-  # minutes is seven times that, which covers an image pull onto a cold node
-  # and little else. The default of ten minutes is thirty-five times the
-  # evidence.
+  # Seven times the seventeen seconds the readiness probe takes to declare
+  # failure -- enough for an image pull onto a cold node and little else.
   progressDeadlineSeconds: 120
-  # The default reports the deadline and takes no action, which leaves a
-  # replica set that will never work holding a pod slot until a person
-  # intervenes. A release that needs a human to finish failing is not a
-  # release that withdraws itself.
+  # The default reports the deadline without acting, which leaves a dead
+  # replica set holding a pod slot until a person intervenes.
   progressDeadlineAbort: true
 
   steps:
-    # Ten percent first, and the reason is the measurement rather than the
-    # exposure. At the measured traffic of 4.87 requests a second, ten percent
-    # sends the candidate about half a request a second — roughly 58 requests
-    # in a measurement window. That is the smallest sample a failure can still
-    # be distinguished from silence in. At five percent the window holds 29
-    # requests and a single failure is 3.4 percent of the sample, so the
-    # measurement becomes coarser than any threshold worth setting, and a
-    # failing version is more likely to clear the first gate and be promoted
-    # to a weight where it does more harm. Below a certain weight, a smaller
-    # first step makes the release less safe.
+    # Set by the sample size, not by the exposure: ten percent is the
+    # smallest first step whose measurement window still holds enough
+    # requests to tell a failure from silence. Below a certain weight a
+    # smaller first step makes a release less safe, which is the
+    # counter-intuitive part and is worked through in docs/architecture.md.
     - setWeight: 10
-    # Three minutes, which is six scrapes at the collector's thirty-second
-    # interval. Two minutes gives four samples and one minute gives two, and a
-    # rate computed from two samples is a difference rather than a rate. A
-    # longer pause costs release time but not exposure to a bad version:
-    # how quickly a release is abandoned is set by the gate's own interval and
-    # tolerance, not by how long a passing step waits.
+    # Six scrapes at the collector's thirty-second interval. A longer pause
+    # costs release time but not exposure: how fast a bad version is
+    # abandoned is set by the gate's interval and tolerance, not by this.
     - pause:
         duration: 3m
-    # Each step roughly triples, then doubles. The size of a step is a bet,
-    # and the evidence behind it grows with every step that passes: three
-    # clean minutes at ten percent is around 880 observed requests, so
-    # widening to thirty risks three times the traffic on far more evidence.
+    # Each step roughly triples, then doubles -- the evidence behind the bet
+    # grows with every step that passes.
     - setWeight: 30
     - pause:
         duration: 3m
@@ -155,54 +126,26 @@ gate:
   # How far back each query looks. Six scrapes.
   window: 2m
 
-  # How long to wait after traffic first reaches the candidate before taking
-  # the first measurement.
-  #
-  # Without this the gate fails a healthy release. A rate computed over a
-  # two-minute window twenty seconds after traffic started describes the
-  # window, not the service: the arithmetic reads 0.061 requests a second
-  # against a floor of 0.1, and a correct candidate is marked absent. At sixty
-  # seconds it reads 0.243, two and a half times the floor.
-  #
-  # The other two measurements need it for a harder reason. A quantile over a
-  # window with no observations in it returns nothing at all, and nothing is
-  # not a number the gate can compare — it is reported as the query having
-  # failed rather than the candidate having failed, which is a different
-  # thing with a different tolerance.
-  #
-  # This is the same principle as the three-minute step: a measurement is only
-  # worth taking once there is enough in the window to measure.
+  # Nothing is measured for the first minute after traffic arrives. Without
+  # this the gate withdraws healthy releases, because a rate read before its
+  # window has filled describes the window rather than the service. Do not
+  # lower it without reading docs/decisions.md.
   initialDelay: 1m
 
-  # How many failed measurements are tolerated before the release is
-  # abandoned. Three failures at thirty-second intervals means a candidate has
-  # to look wrong for about ninety seconds, which is where the tolerance for a
-  # transient lives — see the note on the error share below.
+  # Three failures at thirty-second intervals, so a candidate has to look
+  # wrong for about ninety seconds. This is where the tolerance for a
+  # transient lives, rather than in a looser threshold below.
   failureLimit: 2
 
-  # The candidate must be serving at least this many requests a second.
-  #
-  # A fifth of the half-request-a-second the smallest step should produce. This
-  # is the measurement that catches the failure the others cannot see: a
-  # candidate that never becomes ready serves nothing, fails nothing, and would
-  # otherwise be promoted on a perfect record.
-  #
-  # Too high, near the expected value, and ordinary variation aborts good
-  # releases. Too low or absent, and a dead version passes every gate.
+  # A fifth of what the smallest step should produce. This is the measurement
+  # that catches what the other two cannot: a candidate that never becomes
+  # ready serves nothing, fails nothing, and would otherwise be promoted on a
+  # perfect record. Removing it is the single most damaging edit in this file.
   minRequestsPerSecond: "0.1"
 
-  # The share of real requests the candidate may fail.
-  #
-  # The precision here is partly a fiction and that is worth knowing. At 58
-  # requests in a window, one failure is 1.7 percent — there is no sample in
-  # which this can read one percent. In practice it means any failed request is
-  # a breach, and the tolerance for a blip lives in failureLimit above rather
-  # than in a looser percentage. A service with real traffic would make this a
-  # genuine proportion and could afford a smaller tolerance.
-  #
-  # Too strict and every blip aborts a good release, which is its own outage:
-  # the fix for an incident is also a release. Too loose — five percent, say —
-  # and at this volume a version failing one request in twenty could promote.
+  # One percent, and the precision is partly a fiction: at this traffic rate
+  # a single failed request is 1.7 percent of the window, so in practice any
+  # failure is a breach and the tolerance sits in failureLimit above.
   maxErrorShare: "0.01"
 
   # Ninety-fifth percentile request duration. Nearly blind, and kept anyway:

@@ -2164,6 +2164,28 @@ The limit is in the bucket boundaries chosen when the metric was added, not in
 the threshold. Correcting it means re-bucketing the histogram, which means
 changing a service, which is not this phase's business.
 
+### Why the first measurement waits
+
+The gate does not read anything for the first minute after traffic reaches the
+candidate, and without that delay it fails healthy releases.
+
+A rate computed over a two-minute window twenty seconds after traffic started
+describes the window rather than the service. The arithmetic gives 0.061
+requests a second against a floor of 0.1, so a perfectly good candidate is
+marked absent and withdrawn. At sixty seconds the same query reads 0.243, two
+and a half times the floor.
+
+The other two measurements need the delay for a different and harder reason. A
+quantile over a window containing no observations returns nothing at all, and
+nothing is not a value that can be compared against a threshold — it is
+reported as the query having failed rather than the candidate having failed,
+which carries a different tolerance and would be misread as a measurement.
+
+This is the same principle as the length of each step: a measurement is only
+worth taking once there is enough in the window to measure. It was found by
+arithmetic before the gate ever ran, which is the only reason it was not found
+by a good release being withdrawn.
+
 ### Accepted cost
 
 Every number here is calibrated against a traffic rate that is generated, not
@@ -2414,3 +2436,40 @@ is wide — but it is a window rather than a guarantee, and a pod that dies
 faster than its last lines are shipped loses them. Whether it holds was
 measured rather than assumed, and the measurement is recorded with the gate's
 other results.
+
+## How long a release may make no progress, and whether giving up does anything
+
+Two settings on the release resource, both moved off their defaults, and
+neither is part of the gate. The gate judges a candidate that is serving. These
+cover a candidate that never gets that far.
+
+**Two minutes before a release is declared stuck.** Derived rather than picked:
+the readiness probe declares failure at seventeen seconds, and two minutes is
+roughly seven times that, which covers an image pull onto a cold node and
+little else. The default is ten minutes, or thirty-five times the only evidence
+available about how long failure takes to become visible.
+
+**Giving up actually withdraws the release.** The default reports the deadline
+and takes no action, which leaves a replica set that will never work holding a
+pod slot until a person intervenes. On a platform whose claim is that a bad
+version is withdrawn with nobody watching, a release that needs a human to
+finish failing is not a release that withdraws itself.
+
+**Rejected: leaving both at their defaults.** The honest default position, and
+it fails the platform's own claim. Ten minutes of a stalled release is ten
+minutes in which the thing that was supposed to happen automatically has not,
+and a reported-but-not-acted-on deadline is a notification rather than a
+safeguard.
+
+**Rejected: a tighter deadline.** Anything close to seventeen seconds turns a
+slow image pull into a withdrawn release. The margin exists for the cold-node
+case specifically.
+
+**Accepted cost.** The deadline fires on elapsed time rather than on evidence,
+so a release that is slow for a legitimate reason nobody anticipated is
+withdrawn exactly as fast as one that is broken. There is no distinction
+available at that point, which is the price of acting without a human.
+
+It was also configured and unproven for a phase: the first release it would
+have applied to was repaired before the deadline could act. It has since fired
+at 123 seconds against a configured 120, with cleanup 48 seconds later.
