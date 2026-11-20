@@ -1,18 +1,13 @@
-# The release controller.
+# The release controller: what makes a release a sequence rather than a
+# replacement, keeping two sets of pods alive and weighting traffic between
+# them.
 #
-# This is the piece that makes a release a sequence rather than a replacement.
-# It owns a resource type that stands in for a deployment, and while a new
-# version is being introduced it keeps two sets of pods alive at once and
-# decides how much traffic each gets.
+# Wave zero -- the types it installs are what the wave-two services become
+# instances of, and an instance cannot exist before its type.
 #
-# Wave zero, for the same reason the secrets operator is in wave zero: the
-# types it installs are the types the services in wave two become instances
-# of. An instance cannot be created before its type exists.
-#
-# Nothing in this file mentions the batch worker, and nothing later will. Two
-# versions of that workload running at once is the hazard this whole platform
-# is arranged to prevent, and running it alongside itself is precisely what
-# the mechanism below does. Its safety is a different mechanism entirely.
+# Nothing here mentions the batch worker and nothing later will. Running a
+# workload alongside itself is exactly what this mechanism does, and for that
+# workload it is the hazard rather than the method. Its safety is elsewhere.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -69,21 +64,12 @@ spec:
           # was added, two replicas did not fit at all.
           replicas: 1
 
-          # How traffic actually gets split.
-          #
-          # The controller knows how to weight traffic through several routing
-          # layers, but not through the vendor-neutral routing API this
-          # cluster already runs. That support lives outside the controller,
-          # as an executable it fetches on startup and runs as a child
-          # process. It is the only dependency in this platform that is not a
-          # chart, an image or a module, and it is pinned differently from all
-          # three.
-          #
-          # Pinned three ways on purpose. The release tag fixes which version,
-          # the checksum fixes which bytes, and the controller refuses to
-          # start if either is unsatisfied. Measured rather than copied: the
-          # published digest and the downloaded file agree, and the file is
-          # 77.7 MB.
+          # Weighting traffic through the portable routing API is not built
+          # into the controller: it is an executable fetched at startup and
+          # run as a child process. Pinned by tag and by checksum, and the
+          # controller refuses to start if either is unsatisfied -- the only
+          # dependency here that is not a chart, an image or a module. Why a
+          # plugin rather than native support is in docs/decisions.md.
           trafficRouterPlugins:
             - name: "argoproj-labs/gatewayAPI"
               location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.17.0/gatewayapi-plugin-linux-amd64"

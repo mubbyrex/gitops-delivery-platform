@@ -205,19 +205,10 @@ gate:
   # and at this volume a version failing one request in twenty could promote.
   maxErrorShare: "0.01"
 
-  # The ninety-fifth percentile request duration the candidate may reach.
-  #
-  # READ THIS BEFORE TRUSTING THE NUMBER. Every one of the 8,421 requests this
-  # service has served fell in the histogram's smallest bucket, five
-  # milliseconds, and the true mean is nine microseconds. The reported
-  # percentile is interpolation inside that bucket, not a measurement. This
-  # gate can therefore only detect a regression large enough to cross five
-  # milliseconds — a factor of roughly five hundred. It cannot see a service
-  # that becomes ten times slower.
-  #
-  # The limit is in the bucket boundaries, chosen when the metric was added,
-  # not in this threshold. Fixing it means re-bucketing the histogram, which
-  # means changing the service, which is not this phase's business. Ten
-  # milliseconds is the lowest value the histogram can express without sitting
-  # a rounding error from the idle reading of 0.00475.
+  # Ninety-fifth percentile request duration. Nearly blind, and kept anyway:
+  # every observation so far has landed in the histogram's smallest bucket, so
+  # this can only catch a regression of roughly five hundred times and cannot
+  # see a service that became ten times slower. The limit is in the bucket
+  # boundaries rather than in this number -- read docs/decisions.md before
+  # changing either.
   maxLatencySeconds: "0.01"
