@@ -1,0 +1,643 @@
+{
+ "uid": "kestrel-release",
+ "title": "payments-api \u2014 is a release safe?",
+ "description": "A release in progress, measured from the traffic each version served rather than from the controller's declared weight.",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "refresh": "30s",
+ "time": {
+  "from": "now-30m",
+  "to": "now"
+ },
+ "tags": [
+  "kestrel-pay"
+ ],
+ "timezone": "browser",
+ "templating": {
+  "list": [
+   {
+    "name": "namespace",
+    "label": "environment",
+    "type": "custom",
+    "query": "dev,staging",
+    "current": {
+     "text": "dev",
+     "value": "dev"
+    },
+    "options": [
+     {
+      "text": "dev",
+      "value": "dev",
+      "selected": true
+     },
+     {
+      "text": "staging",
+      "value": "staging",
+      "selected": false
+     }
+    ]
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Is a release happening?",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "text",
+   "title": "How to read this",
+   "datasource": null,
+   "gridPos": {
+    "h": 9,
+    "w": 8,
+    "x": 0,
+    "y": 1
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "### What this is\n\nA release in progress, read **from the traffic**, not from the controller's own\nstatus.\n\nEach version's pods carry a hash. The requests they answer are counted against\nit, so the share each version is actually serving can be measured rather than\ntaken on trust. A declared weight and a served share are different claims, and\nonly the second one is evidence.\n\n### At rest\n\nOne version, serving 100%. The panels below are nearly empty and that is\ncorrect \u2014 there is no release to show.\n\n### During a release\n\nTwo versions. The share should settle near 10%, then 30%, then 60% as the steps\nadvance, with three minutes at each.\n\n### The red lines\n\nThe gate's own thresholds. The floor on requests a second is the one that\nmatters most: a candidate that cannot stay up serves almost nothing and\ntherefore *fails* almost nothing, so error share alone would promote it."
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Versions serving",
+   "description": "More than one means a release is in flight.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 8,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": [],
+     "noValue": "no data"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(count by (rollouts_pod_template_hash) (payments_api_build_info{namespace=\"$namespace\"})) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Pods",
+   "description": "Across all versions. A canary costs one pod, not two: any weight below 100% rounds a two-replica service to a single candidate.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": [],
+     "noValue": "no data"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(payments_api_build_info{namespace=\"$namespace\"}) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "table",
+   "title": "Which versions, and how much each is serving",
+   "description": "The hash is the controller's; the version is the one committed in the environment file. Share is measured over the last two minutes.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 16,
+    "x": 8,
+    "y": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "left"
+     },
+     "unit": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "noValue": "no versions reporting"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "share %"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percent"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "refId": "A",
+     "format": "table",
+     "instant": true,
+     "expr": "payments_api_build_info{namespace=\"$namespace\"}"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "refId": "B",
+     "format": "table",
+     "instant": true,
+     "expr": "100 * sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m])) / scalar(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m])))"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "joinByField",
+     "options": {
+      "byField": "rollouts_pod_template_hash",
+      "mode": "outer"
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "Time 1": true,
+       "Time 2": true,
+       "__name__": true,
+       "container": true,
+       "endpoint": true,
+       "instance": true,
+       "job": true,
+       "namespace": true,
+       "pod": true,
+       "service": true,
+       "Value #A": true
+      },
+      "renameByName": {
+       "rollouts_pod_template_hash": "hash",
+       "version": "version",
+       "Value #B": "share %"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "The split, as served rather than as declared",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 10
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Requests a second, by version",
+   "description": "Real requests only; probe paths excluded. The red line is the gate's floor of 0.1 \u2014 below it a candidate is treated as not serving at all.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 11
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": "reqps",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.1
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisSoftMin": 0,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "thresholdsStyle": {
+       "mode": "line"
+      }
+     },
+     "noValue": "no requests (probes excluded)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m]))",
+     "refId": "A",
+     "legendFormat": "{{rollouts_pod_template_hash}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Share of traffic, by version",
+   "description": "What each version is actually serving. During a release this is the weight, measured rather than asserted.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 11
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 18,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisSoftMin": 0,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "scaleDistribution": {
+       "type": "linear"
+      }
+     },
+     "noValue": "no requests (probes excluded)",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "100 * sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m])) / scalar(sum(rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m])))",
+     "refId": "A",
+     "legendFormat": "{{rollouts_pod_template_hash}}"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "What the gate is reading",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 19
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Share of requests failing, by version",
+   "description": "The red line is the gate's 1% limit. A flat zero is the expected and correct reading: neither failure switch can make this service return an error on a real request, which is exactly why the floor on requests a second exists. Written to report a true zero rather than an empty panel \u2014 'no failures' and 'no data' look identical otherwise.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 20
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": "percentunit",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.01
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisSoftMin": 0,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "thresholdsStyle": {
+       "mode": "line"
+      }
+     },
+     "noValue": "no requests at all (not the same as no failures)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "(sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\", status!~\"2..\"}[2m])) or sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m])) * 0) / sum by (rollouts_pod_template_hash) (rate(payments_api_requests_total{namespace=\"$namespace\", path=\"/\"}[2m]))",
+     "refId": "A",
+     "legendFormat": "{{rollouts_pod_template_hash}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "95th percentile duration, by version",
+   "description": "The red line is the gate's 10ms limit. Nearly blind: every observation lands in the histogram's smallest bucket, so this only moves on a regression of roughly five hundred times.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 20
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.01
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "axisSoftMin": 0,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "thresholdsStyle": {
+       "mode": "line"
+      }
+     },
+     "noValue": "no requests (probes excluded)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.95, sum by (rollouts_pod_template_hash, le) (rate(payments_api_request_duration_seconds_bucket{namespace=\"$namespace\", path=\"/\"}[2m])))",
+     "refId": "A",
+     "legendFormat": "{{rollouts_pod_template_hash}}"
+    }
+   ]
+  }
+ ]
+}
