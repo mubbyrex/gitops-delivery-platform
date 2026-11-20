@@ -58,14 +58,14 @@
    "title": "How to read this",
    "datasource": null,
    "gridPos": {
-    "h": 9,
+    "h": 13,
     "w": 8,
     "x": 0,
     "y": 1
    },
    "options": {
     "mode": "markdown",
-    "content": "### What this is\n\nA release in progress, read **from the traffic**, not from the controller's own\nstatus.\n\nEach version's pods carry a hash. The requests they answer are counted against\nit, so the share each version is actually serving can be measured rather than\ntaken on trust. A declared weight and a served share are different claims, and\nonly the second one is evidence.\n\n### At rest\n\nOne version, serving 100%. The panels below are nearly empty and that is\ncorrect \u2014 there is no release to show.\n\n### During a release\n\nTwo versions. The share should settle near 10%, then 30%, then 60% as the steps\nadvance, with three minutes at each.\n\n### The red lines\n\nThe gate's own thresholds. The floor on requests a second is the one that\nmatters most: a candidate that cannot stay up serves almost nothing and\ntherefore *fails* almost nothing, so error share alone would promote it."
+    "content": "### What this is\n\nA release in progress, read **from the traffic** rather than from the\ncontroller's own status.\n\nEach version's pods carry a hash, and the requests they answer are counted\nagainst it. So the share a version is actually serving is measured. A declared\nweight and a served share are different claims, and only the second is\nevidence.\n\n### Reading the split\n\nThe share **lags** the weight. Each point is a rate over two minutes, so just\nafter a step the window still holds the previous weight. It catches up before\nthe step ends.\n\n### The red lines\n\nThe gate's own thresholds. The floor on requests a second matters most: a\nversion that cannot stay up serves almost nothing and therefore *fails* almost\nnothing, so error share alone would promote it."
    }
   },
   {
@@ -197,7 +197,7 @@
     "uid": "prometheus"
    },
    "gridPos": {
-    "h": 5,
+    "h": 9,
     "w": 16,
     "x": 8,
     "y": 5
@@ -305,7 +305,7 @@
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 10
+    "y": 14
    },
    "panels": []
   },
@@ -321,7 +321,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 11
+    "y": 15
    },
    "fieldConfig": {
     "defaults": {
@@ -402,7 +402,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 11
+    "y": 15
    },
    "fieldConfig": {
     "defaults": {
@@ -473,7 +473,7 @@
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 19
+    "y": 23
    },
    "panels": []
   },
@@ -489,7 +489,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 20
+    "y": 24
    },
    "fieldConfig": {
     "defaults": {
@@ -529,7 +529,8 @@
       },
       "thresholdsStyle": {
        "mode": "line"
-      }
+      },
+      "axisSoftMax": 0.02
      },
      "noValue": "no requests at all (not the same as no failures)"
     },
@@ -570,7 +571,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 20
+    "y": 24
    },
    "fieldConfig": {
     "defaults": {
@@ -610,7 +611,8 @@
       },
       "thresholdsStyle": {
        "mode": "line"
-      }
+      },
+      "axisSoftMax": 0.012
      },
      "noValue": "no requests (probes excluded)"
     },

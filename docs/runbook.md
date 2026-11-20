@@ -35,6 +35,54 @@ which is normal for the first few minutes and not a fault.
 
 ---
 
+## Everything times out, and the cluster is fine
+
+Symptom: every `kubectl` command hangs and then fails, while the machine's
+internet works normally.
+
+```
+Unable to connect to the server: dial tcp <address>:443: i/o timeout
+```
+
+No permission error, no certificate error, no refusal — just silence until the
+timeout. A `terraform apply` shows the same thing partway through, having
+successfully created something a few seconds earlier.
+
+**The usual cause is that your public address changed.** The Kubernetes API
+endpoint is public and restricted to an explicit allowlist, which
+`scripts/up.sh` fills in with whatever address this machine had *at the moment
+the cluster was built*. Nothing updates it afterwards. On a connection that
+rotates addresses — most domestic and mobile ones — the cluster becomes
+unreachable without anything about the cluster changing.
+
+Confirm it in two commands, neither of which goes through the cluster:
+
+```bash
+curl -s https://checkip.amazonaws.com          # where you are now
+aws eks describe-cluster --name <cluster> --region <region> \
+  --query 'cluster.resourcesVpcConfig.publicAccessCidrs'
+```
+
+If those disagree, that is the whole problem. The cluster will report `ACTIVE`
+throughout.
+
+**The fix is to run `./scripts/up.sh` again.** It re-detects the address and
+re-applies, which updates the allowlist, and it is safe to run against a
+platform that is already up. The cluster configuration updates in a couple of
+minutes and `kubectl` starts working again.
+
+**It can also strike mid-build**, which is more confusing: the address rotates
+between one resource and the next, so the first few objects are created and
+then everything after them times out. The failure looks like a broken
+provisioning step rather than a network boundary. Re-running is still the
+answer.
+
+This is the cost of the public endpoint with an allowlist, and it is accepted
+rather than solved — see the endpoint decision in `docs/decisions.md`. A
+private endpoint removes it and brings a bastion with it.
+
+---
+
 ## Adding a node to a running cluster
 
 Raising the node count in `terraform/cluster` and applying **will fail**, and
