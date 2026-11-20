@@ -46,7 +46,8 @@ Everything below is built and running, not planned.
 | **Delivery** | Argo CD, installed by Terraform and pointed at [`argocd/root/`](argocd/root/) — after that, what runs is decided by what is committed here |
 | **Ingress** | Traefik, driven through the Gateway API rather than vendor annotations |
 | **Secrets** | External Secrets, reading AWS Secrets Manager through EKS Pod Identity |
-| **Measurement** | Prometheus and Grafana, with one committed dashboard per service |
+| **Measurement** | Prometheus and Grafana, with committed dashboards — one per service, plus one that shows a release while it happens |
+| **Logs** | Loki and Alloy — so that *why* a release failed can be answered, not only *whether* |
 | **Progressive delivery** | Argo Rollouts — the API releases 10% → 30% → 60% → 100%, three minutes and a gate at each step |
 | **Pipeline** | GitHub Actions builds, scans, publishes and commits an image digest. It holds no cluster credential and no cloud credential |
 
@@ -144,6 +145,12 @@ tunnelling, and log in with the password from the secret above:
 ```bash
 kubectl port-forward -n argocd svc/argo-cd-argocd-server 8080:443
 ```
+
+The dashboards are reached the same way, on `svc/metrics-grafana` port 80.
+Their password is generated rather than committed, so it has to be read out of
+the cluster and it changes on every rebuild —
+[`docs/runbook.md`](docs/runbook.md) has both commands and says why that one was
+left unmanaged.
 
 ---
 
