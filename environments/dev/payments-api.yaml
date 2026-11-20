@@ -37,7 +37,7 @@ image:
 # and the case the obvious gate misses, because a version that serves almost
 # nothing fails almost nothing.
 failure:
-  liveness: false
+  liveness: true
   readiness: false
 
 readyAfterSeconds: 0
