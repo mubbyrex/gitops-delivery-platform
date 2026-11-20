@@ -387,7 +387,7 @@
   {
    "type": "timeseries",
    "title": "Requests by status",
-   "description": "Real requests only. Misses a request that returns success carrying wrong data.",
+   "description": "Real requests only; probe paths excluded. Stacking is off deliberately: this service returns success unconditionally on its real path, so a stacked failure series would sit permanently at the top of the stack while being zero.",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -417,13 +417,13 @@
       "drawStyle": "line",
       "lineInterpolation": "smooth",
       "lineWidth": 2,
-      "fillOpacity": 18,
+      "fillOpacity": 10,
       "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
       "stacking": {
-       "mode": "normal",
+       "mode": "none",
        "group": "A"
       },
       "axisSoftMin": 0,

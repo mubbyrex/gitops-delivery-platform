@@ -57,7 +57,7 @@
    "type": "text",
    "title": "How to read this",
    "gridPos": {
-    "h": 8,
+    "h": 12,
     "w": 8,
     "x": 0,
     "y": 1
@@ -441,14 +441,14 @@
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 9
+    "y": 13
    },
    "panels": []
   },
   {
    "type": "timeseries",
    "title": "Runs retained, by outcome",
-   "description": "Interrupted and failed are the same thing here.",
+   "description": "Counts, not rates. Stacking is off deliberately: a stacked series sitting at zero is drawn at the height of the one below it, so zero failures would render at the success count.",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -457,7 +457,7 @@
     "h": 9,
     "w": 12,
     "x": 0,
-    "y": 10
+    "y": 14
    },
    "fieldConfig": {
     "defaults": {
@@ -478,13 +478,13 @@
       "drawStyle": "line",
       "lineInterpolation": "smooth",
       "lineWidth": 2,
-      "fillOpacity": 18,
+      "fillOpacity": 10,
       "gradientMode": "opacity",
       "showPoints": "never",
       "spanNulls": true,
       "pointSize": 5,
       "stacking": {
-       "mode": "normal",
+       "mode": "none",
        "group": "A"
       },
       "axisSoftMin": 0,
@@ -570,7 +570,7 @@
     "h": 9,
     "w": 12,
     "x": 12,
-    "y": 10
+    "y": 14
    },
    "fieldConfig": {
     "defaults": {
