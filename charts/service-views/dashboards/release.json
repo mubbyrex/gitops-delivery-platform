@@ -1,6 +1,6 @@
 {
  "uid": "kestrel-release",
- "title": "payments-api \u2014 is a release safe?",
+ "title": "payments-api \u2014 release progress",
  "description": "A release in progress, measured from the traffic each version served rather than from the controller's declared weight.",
  "schemaVersion": 39,
  "version": 1,

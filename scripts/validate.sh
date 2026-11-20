@@ -189,6 +189,35 @@ tracked=$(git -C "$REPO_ROOT" ls-files | grep -E '\.tfstate|\.tfvars$|kubeconfig
 [ -z "$tracked" ] && pass "no state, variable or credential file is tracked" \
   || { fail "a file that must never be committed is tracked"; printf '%s\n' "$tracked" | sed 's/^/        /'; }
 
+say "Repository map"
+# Both directions, because a map can be wrong by describing what is absent or
+# by omitting what is present -- and the private map this replaced managed the
+# first, documenting seven directories that were never built.
+MAP="$REPO_ROOT/docs/structure.md"
+if [ ! -f "$MAP" ]; then
+  fail "docs/structure.md is missing"
+else
+  missing=""
+  # every directory the map names inside its tree block must exist
+  while read -r d; do
+    [ -z "$d" ] && continue
+    [ -d "$REPO_ROOT/$d" ] || missing="$missing $d"
+  done <<EOF
+$(grep -oE '^[a-z.][a-zA-Z0-9_.-]*/[a-zA-Z0-9_./-]*' "$MAP" | sed 's#/$##' | sort -u)
+EOF
+  absent=""
+  # every tracked top-level directory must be named in the map
+  for d in $(git -C "$REPO_ROOT" ls-files | awk -F/ 'NF>1{print $1}' | sort -u); do
+    grep -q "$d/" "$MAP" || absent="$absent $d"
+  done
+  if [ -z "$missing" ] && [ -z "$absent" ]; then
+    pass "docs/structure.md matches the tree, in both directions"
+  else
+    [ -n "$missing" ] && fail "the map names directories that do not exist:$missing"
+    [ -n "$absent" ]  && fail "the tree has directories the map never mentions:$absent"
+  fi
+fi
+
 say "Decisions log"
 if "$REPO_ROOT/scripts/check-decisions.sh" >/dev/null 2>&1; then
   pass "every entry states a cost, and the log is not behind"

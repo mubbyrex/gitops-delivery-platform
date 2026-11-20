@@ -1,699 +1,699 @@
 {
-  "uid": "kestrel-settlement-worker",
-  "title": "settlement-worker \u2014 is it healthy?",
-  "description": "Indicators sourced from the cluster's record, because the run's own numbers die with it.",
-  "schemaVersion": 39,
-  "version": 1,
-  "editable": false,
-  "refresh": "30s",
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
-  "tags": [
-    "kestrel-pay"
-  ],
-  "timezone": "browser",
-  "templating": {
-    "list": [
-      {
-        "name": "namespace",
-        "label": "environment",
-        "type": "custom",
-        "query": "dev,staging",
-        "current": {
-          "text": "dev",
-          "value": "dev"
-        },
-        "options": [
-          {
-            "text": "dev",
-            "value": "dev",
-            "selected": true
-          },
-          {
-            "text": "staging",
-            "value": "staging",
-            "selected": false
-          }
-        ]
-      }
+ "uid": "kestrel-settlement-worker",
+ "title": "settlement-worker \u2014 scheduled runs",
+ "description": "Indicators sourced from the cluster's record, because the run's own numbers die with it.",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "refresh": "30s",
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "tags": [
+  "kestrel-pay"
+ ],
+ "timezone": "browser",
+ "templating": {
+  "list": [
+   {
+    "name": "namespace",
+    "label": "environment",
+    "type": "custom",
+    "query": "dev,staging",
+    "current": {
+     "text": "dev",
+     "value": "dev"
+    },
+    "options": [
+     {
+      "text": "dev",
+      "value": "dev",
+      "selected": true
+     },
+     {
+      "text": "staging",
+      "value": "staging",
+      "selected": false
+     }
     ]
-  },
-  "panels": [
-    {
-      "type": "row",
-      "title": "Did it run, and did it work?",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "panels": []
-    },
-    {
-      "type": "text",
-      "title": "How to read this",
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 0,
-        "y": 1
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "### Did it run, and did it work?\n\nThis worker is a scheduled job. It starts, does its work, and exits \u2014 so it cannot report its own health the way a service can. Everything here is read from the cluster's record of its finished runs.\n\n**Three states, and two numbers to tell them apart:**\n\n| | time since last **success** | time since last **scheduled** |\n|---|---|---|\n| running normally | under one period | under one period |\n| runs skipped or failing | **climbing** | under one period |\n| silently stopped | **climbing** | **climbing** |\n\nThe second column is the one that is easy to leave out. Nothing increments when a scheduled job stops being scheduled \u2014 there is no failure to count, because nothing ran to fail. Absence is the signal.\n\n**Both read empty after the workload is renamed**, because renaming it deletes every run it ever created, including the history these panels read. That looks identical to a worker that has stopped."
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Time since last success",
-      "description": "The only indicator that treats absence as a signal. Cannot tell 'never scheduled' from 'all runs failing'.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 8,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "unit": "s",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "area"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Active runs",
-      "description": "Never more than one, by design. Present because an unmeasured guarantee is a belief.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 13,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "purple"
-          },
-          "unit": null,
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "idle",
-                  "index": 0
-                },
-                "1": {
-                  "text": "running",
-                  "index": 1
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "none"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kube_cronjob_status_active{cronjob=\"settlement-worker\", namespace=\"$namespace\"}) or vector(0)",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Version",
-      "description": "Attribution, not health. Looked back over an hour: the pod is absent most of the time.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "purple"
-          },
-          "unit": null,
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "none"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count(count by (version) (max_over_time(settlement_worker_build_info{namespace=\"$namespace\"}[1h]))) or vector(0)",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Time since last scheduled",
-      "description": "The measurement that separates a worker being SKIPPED from a worker that has STOPPED. Both make 'time since last success' climb, and only this one tells them apart: if the schedule is still firing, runs are being skipped or failing; if this is climbing too, nothing is being scheduled at all and no counter anywhere will say so. It also reads empty after the workload is renamed, because renaming it destroys the record of every run it ever had.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 8,
-        "y": 5,
-        "w": 5,
-        "h": 4
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "unit": "s",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "area"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "time() - max(kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
-          "instant": false,
-          "legendFormat": "seconds"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Runs succeeded (retained)",
-      "description": "Only retained history is counted, so this plateaus rather than growing forever.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 13,
-        "y": 5,
-        "w": 5,
-        "h": 4
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "green"
-          },
-          "unit": null,
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "area"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kube_job_status_succeeded{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Runs failed (retained)",
-      "description": "A failed run is not retried: a retry would be a second attempt over the same batch.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 18,
-        "y": 5,
-        "w": 6,
-        "h": 4
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "red"
-          },
-          "unit": null,
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "colorMode": "value",
-        "justifyMode": "center",
-        "graphMode": "area"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kube_job_status_failed{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "title": "Is it keeping up?",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 9
-      },
-      "panels": []
-    },
-    {
-      "type": "timeseries",
-      "title": "Runs retained, by outcome",
-      "description": "Interrupted and failed are the same thing here.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 10
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": null,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "fillOpacity": 18,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "pointSize": 5,
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            },
-            "axisSoftMin": 0,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "succeeded"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "failed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kube_job_status_succeeded{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
-          "legendFormat": "succeeded",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kube_job_status_failed{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
-          "legendFormat": "failed",
-          "refId": "B"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Run duration against the schedule",
-      "description": "Saturation for a scheduled job is lateness, not capacity. A run approaching its own period is what makes overlap possible; 'since last success' climbing past the period means runs are failing.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 10
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "fillOpacity": 18,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "axisSoftMin": 0,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "last run duration"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "since last schedule"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "purple"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "since last success"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"} - on(job_name) kube_job_status_start_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
-          "legendFormat": "last run duration",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max(time() - kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
-          "legendFormat": "since last schedule",
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
-          "legendFormat": "since last success",
-          "refId": "C"
-        }
-      ]
-    }
+   }
   ]
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Did it run, and did it work?",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "text",
+   "title": "How to read this",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 1
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "### Did it run, and did it work?\n\nThis worker is a scheduled job. It starts, does its work, and exits \u2014 so it cannot report its own health the way a service can. Everything here is read from the cluster's record of its finished runs.\n\n**Three states, and two numbers to tell them apart:**\n\n| | time since last **success** | time since last **scheduled** |\n|---|---|---|\n| running normally | under one period | under one period |\n| runs skipped or failing | **climbing** | under one period |\n| silently stopped | **climbing** | **climbing** |\n\nThe second column is the one that is easy to leave out. Nothing increments when a scheduled job stops being scheduled \u2014 there is no failure to count, because nothing ran to fail. Absence is the signal.\n\n**Both read empty after the workload is renamed**, because renaming it deletes every run it ever created, including the history these panels read. That looks identical to a worker that has stopped."
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Time since last success",
+   "description": "The only indicator that treats absence as a signal. Cannot tell 'never scheduled' from 'all runs failing'.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 5,
+    "x": 8,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "unit": "s",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": []
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "time() - max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Active runs",
+   "description": "Never more than one, by design. Present because an unmeasured guarantee is a belief.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 5,
+    "x": 13,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "purple"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "idle",
+         "index": 0
+        },
+        "1": {
+         "text": "running",
+         "index": 1
+        }
+       }
+      }
+     ]
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "none"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kube_cronjob_status_active{cronjob=\"settlement-worker\", namespace=\"$namespace\"}) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Version",
+   "description": "Attribution, not health. Looked back over an hour: the pod is absent most of the time.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "purple"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": []
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "none"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(count by (version) (max_over_time(settlement_worker_build_info{namespace=\"$namespace\"}[1h]))) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Time since last scheduled",
+   "description": "The measurement that separates a worker being SKIPPED from a worker that has STOPPED. Both make 'time since last success' climb, and only this one tells them apart: if the schedule is still firing, runs are being skipped or failing; if this is climbing too, nothing is being scheduled at all and no counter anywhere will say so. It also reads empty after the workload is renamed, because renaming it destroys the record of every run it ever had.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 5,
+    "w": 5,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "unit": "s",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": []
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "time() - max(kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
+     "instant": false,
+     "legendFormat": "seconds"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Runs succeeded (retained)",
+   "description": "Only retained history is counted, so this plateaus rather than growing forever.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 13,
+    "y": 5,
+    "w": 5,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": []
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kube_job_status_succeeded{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Runs failed (retained)",
+   "description": "A failed run is not retried: a retry would be a second attempt over the same batch.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 5,
+    "w": 6,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "red"
+     },
+     "unit": null,
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "mappings": []
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "auto",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kube_job_status_failed{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "Is it keeping up?",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 9
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Runs retained, by outcome",
+   "description": "Interrupted and failed are the same thing here.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 0,
+    "y": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": null,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 18,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "scaleDistribution": {
+       "type": "linear"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": "succeeded"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": "failed"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kube_job_status_succeeded{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
+     "legendFormat": "succeeded",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kube_job_status_failed{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"}) or vector(0)",
+     "legendFormat": "failed",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Run duration against the schedule",
+   "description": "Saturation for a scheduled job is lateness, not capacity. A run approaching its own period is what makes overlap possible; 'since last success' climbing past the period means runs are failing.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 12,
+    "y": 10
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     },
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "smooth",
+      "lineWidth": 2,
+      "fillOpacity": 18,
+      "gradientMode": "opacity",
+      "showPoints": "never",
+      "spanNulls": true,
+      "pointSize": 5,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "scaleDistribution": {
+       "type": "linear"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": "last run duration"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": "since last schedule"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": "since last success"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"} - on(job_name) kube_job_status_start_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
+     "legendFormat": "last run duration",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(time() - kube_cronjob_status_last_schedule_time{cronjob=\"settlement-worker\", namespace=\"$namespace\"})",
+     "legendFormat": "since last schedule",
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "time() - max(kube_job_status_completion_time{namespace=\"$namespace\", job_name=~\"settlement-worker.*\"})",
+     "legendFormat": "since last success",
+     "refId": "C"
+    }
+   ]
+  }
+ ]
 }

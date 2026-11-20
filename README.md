@@ -78,6 +78,8 @@ Start here, in this order:
   alternative, what was rejected, and what the choice costs. Each entry carries
   an accepted cost, because a decision that appears to cost nothing was not one
 - [`docs/runbook.md`](docs/runbook.md) — what to do when something is wrong
+- [`docs/structure.md`](docs/structure.md) — where everything is, and what
+  each directory is for
 
 ### Where things live
 
@@ -94,6 +96,10 @@ local/                 a kind cluster for work that does not need AWS
 
 Promotion from dev to staging is a person editing the image digest in
 `environments/staging/<service>.yaml`. The pipeline only ever commits to dev.
+
+[`docs/structure.md`](docs/structure.md) is the full map: what is in each
+directory, the four rules that explain the layout, and which file to open
+depending on what you came to find out.
 
 ---
 

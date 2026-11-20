@@ -145,7 +145,11 @@ if spec_dir:
 # into the public log when the task that implemented it landed. A queue nobody
 # looks at is the same as no queue.
 parked = pathlib.Path('specs/carried-forward.md')
-if parked.is_file():
+# A file-level CLOSED marker settles every entry in it. Without this the list
+# below reports the same closed items on every run, and a check that always
+# prints the same noise stops being read -- which is the failure this script
+# exists to prevent, reproduced inside the script itself.
+if parked.is_file() and 'CLOSED' not in parked.read_text()[:400]:
     pending = [ti for ti, body in
                ((c.split('\n', 1)[0].strip(), c)
                 for c in re.split(r'^## ', parked.read_text(), flags=re.M)[1:])

@@ -2568,3 +2568,50 @@ the service's chart, part in a component named for views — and nothing in eith
 file says the other exists without a reader following the reasoning here. A
 reader looking for "everything about metrics for this service" has to know to
 look twice.
+
+## The repository map is a separate page, and a check keeps it true
+
+A reader who has decided to stay needs to know what is in each directory and
+which file to open first. A reader deciding whether to stay needs nine lines
+and no more. Those are different readers arriving at different moments, and
+serving the second one inside the README costs the first one the thing the
+README is for.
+
+**Decision. The short tree stays in the README. The full map is its own page,
+linked from it.**
+
+**And it is checked by a command rather than by intention.** Every path the map
+names must exist, and every tracked top-level directory must appear in the map.
+Both directions, because a map can be wrong by describing what is absent or by
+omitting what is present.
+
+**Why the check exists at all, which is the part worth reading.** A map of this
+repository already existed. It was accurate on the day it was written, before
+any of the platform was built, and by the time anyone looked again **seven of
+the nine directories it described had never been created** — an observability
+directory, an analysis directory, a data layer, a third environment. Nothing
+ever told anyone it had stopped being true, because nothing was checking.
+
+That is the same failure this project has now recorded four times: a rule that
+depends on somebody remembering to verify it. Twice the decisions log fell
+behind its own write-it-live rule, and got a check. Once a task was reported
+complete with a quarter of its verification unrun. This is the fourth, in
+document form.
+
+**Rejected: putting the map in the README.** It is where a reader looks first,
+which is the argument for it. Rejected because the README is already the
+longest document a casual reader will finish, and a full annotated tree would
+push the thing the repository is actually about — why two services are released
+differently — below the point most people stop.
+
+**Rejected: generating the map from the tree.** It would never go stale, which
+is the whole problem being solved. Rejected because a generated listing cannot
+say what a directory is *for*, and the purpose is the only part a reader cannot
+get by running `ls`. The check splits the difference: the prose is written by
+hand, and the structure it claims is verified by machine.
+
+**Accepted cost.** The check enforces that directories match, and cannot
+enforce that the descriptions beside them are still true. A directory whose
+purpose quietly changes passes every run. The guard catches the failure that
+actually happened and not the subtler one, and claiming otherwise would be the
+same mistake as the map it replaces.
