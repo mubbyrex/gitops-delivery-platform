@@ -684,6 +684,19 @@ it never needs to discover them, and a role that can enumerate an account's
 secrets tells an attacker what is worth going after even when it cannot read
 any of them.
 
+**What the identity may actually do.** Two actions: fetch a secret's value,
+and describe a secret in order to notice that its value has moved on. Listing
+secrets is absent deliberately. The operator is told which secrets to fetch by
+what is committed, so it never needs to discover them — and a role that can
+enumerate an account's secrets tells an attacker what is worth going after even
+when it cannot read any of them.
+
+The resource pattern ends in a wildcard, which is not laxness that crept in.
+Every secret identifier in this service ends in six random characters assigned
+at creation, so the exact identifier cannot be known before the secret exists.
+The pattern is built from values this configuration already holds rather than
+written out by hand.
+
 **Accepted cost, and there are three.**
 
 Portability. This mechanism belongs to one cloud provider's managed Kubernetes
@@ -2473,3 +2486,85 @@ available at that point, which is the price of acting without a human.
 It was also configured and unproven for a phase: the first release it would
 have applied to was repaired before the deadline could act. It has since fired
 at 123 seconds against a configured 120, with cleanup 48 seconds later.
+
+## Which namespaces may publish through the shared gateway
+
+One gateway serves the whole cluster, and something has to say whose routes it
+will accept. The chart's default is the gateway's own namespace, which is the
+namespace the ingress controller lives in.
+
+That default is safe and wrong here. A route belongs beside the service it
+routes to, and the services live in the environment namespaces. Left alone, the
+gateway accepts nothing, and the only way to publish a service would be to put
+its route in the ingress controller's namespace, away from the chart that owns
+it.
+
+**Decision. Routes are accepted from any namespace carrying the `environment`
+label**, which the environment chart puts on every namespace it creates.
+
+**Why a label rather than a list of names.** The rule then reads "any namespace
+that is an environment", and a third environment needs no edit here. A list
+would need one, and the failure mode of forgetting is a service that deploys
+cleanly, reports healthy, and cannot be reached — which is harder to diagnose
+than a service that fails to deploy at all.
+
+**Rejected: accepting routes from all namespaces.** One word shorter, and it
+would let anything in the cluster publish itself through the front door. The
+gateway is the one component here reachable from the internet, so what may
+attach to it is the narrowest place to say no.
+
+**Rejected: putting every route in the ingress controller's namespace.** The
+default, and it works. Rejected because it separates a service's route from the
+chart that owns the service, so publishing a new service means editing two
+charts in two namespaces and the route outlives the service if anyone forgets.
+
+**Accepted cost.** Any namespace that carries the label can publish through the
+front door, and nothing checks what hostname it claims. Two environments could
+in principle both declare a route for the same host, and the result is decided
+by the routing layer's own precedence rules rather than by anything stated here.
+With two environments owned by one operator that is theoretical; in a cluster
+with more than one team in it, this is the point at which the label stops being
+sufficient and route ownership needs a real policy.
+
+## The committed views ship once, where the scrape definitions ship per environment
+
+Two kinds of object, both part of observing a service, shipped in opposite
+ways. The asymmetry looks like an inconsistency and is the point.
+
+**A scrape definition describes targets in one namespace.** It names what to
+collect from, and what to collect from exists once per environment, so one
+belongs in each environment and two copies are correct. They are committed
+inside each service's own chart.
+
+**A view describes a service across environments** and switches between them
+with a selector at the top. It is a single artefact about a single service.
+
+**Decision. The views are their own component, released once, into the
+namespace the collector lives in.**
+
+**Why this follows from how the sidecar works.** The component that loads views
+watches every namespace for a labelled config map. So shipping views from a
+per-environment chart would not produce one view per environment — it would
+produce the same view, loaded twice, listed twice in the menu, with nothing to
+distinguish the copies. The duplication would be invisible in the repository and
+obvious only in the interface.
+
+For the same reason there is no per-environment values file for this component.
+The environments a view offers are a property of the view, not of a place it is
+deployed to.
+
+**Rejected: putting the views in each service's chart, beside its scrape
+definition.** Consistent, and consistency is usually right. Rejected because the
+two objects have different scopes, and treating them the same produces the
+duplicate-menu-entry failure above.
+
+**Rejected: one chart holding both the views and the scrape definitions.** It
+would put everything about observing a service in one place. Rejected because
+the scrape definitions genuinely do belong per environment, so the chart would
+have to be deployed per environment, which brings the duplication back.
+
+**Accepted cost.** Observing a service is now described in two places — part in
+the service's chart, part in a component named for views — and nothing in either
+file says the other exists without a reader following the reasoning here. A
+reader looking for "everything about metrics for this service" has to know to
+look twice.

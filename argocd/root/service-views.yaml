@@ -1,20 +1,9 @@
-# One view per service.
+# One view per service: config maps the dashboard sidecar picks up.
 #
-# Wave two, alongside the services themselves rather than with the collector.
-# These are config maps that the dashboard sidecar picks up; they need the
-# sidecar to exist, which wave zero provides, and nothing else needs them.
-#
-# A single release rather than one per environment, which is the opposite of
-# how the scrape definitions are shipped. The two objects are scoped
-# differently: a scrape definition describes targets in one namespace, so one
-# belongs in each environment; a view describes a service across environments
-# and switches between them with a selector at the top. The sidecar watches
-# every namespace, so shipping these per environment would not produce two
-# views -- it would produce the same view listed twice.
-#
-# There is no values file per environment here for the same reason. The
-# environments this view offers are a property of the view, not of a place it
-# is deployed to.
+# Wave two, which is when the sidecar from wave zero already exists. Released
+# once rather than per environment -- shipping these per environment would
+# produce the same view listed twice, not two views. Reasoning in
+# docs/decisions.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

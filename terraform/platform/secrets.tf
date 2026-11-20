@@ -33,17 +33,12 @@ data "aws_iam_policy_document" "external_secrets_trust" {
   }
 }
 
-# Read, and only the reads the operator actually performs: fetch a value, and
-# describe a secret in order to notice that its value has moved on. Listing
-# secrets is absent deliberately — the operator is told which secrets to fetch
-# by what is committed, so it never needs to discover them, and a role that can
-# enumerate an account's secrets tells an attacker what is worth going after
-# even if it cannot read any of them.
+# Exactly the two reads the operator performs, and no listing -- see
+# docs/decisions.md for why enumeration is withheld.
 #
-# The resource pattern is built from values this configuration already holds
-# rather than written out. The trailing wildcard is not optional laxness: every
-# secret identifier in this service ends in six random characters assigned at
-# creation, so an exact identifier cannot be known before the secret exists.
+# The trailing wildcard is not optional laxness: every secret identifier in
+# this service ends in six random characters assigned at creation, so an exact
+# identifier cannot be known before the secret exists.
 data "aws_iam_policy_document" "external_secrets_read" {
   statement {
     sid    = "ReadPlatformSecrets"

@@ -41,21 +41,10 @@ spec:
           kubernetesIngress:
             enabled: false
 
-        # Which namespaces may attach a route to the shared gateway.
-        #
-        # The chart's default is the namespace the gateway itself lives in,
-        # which means this one. That is a safe default and the wrong one here:
-        # a route belongs next to the service it routes to, and the services
-        # live in the environments. Left alone, the gateway accepts nothing
-        # and the only way to publish a service is to put its route in this
-        # namespace, away from the chart that owns it.
-        #
-        # Widened by the presence of a label rather than by a list of names.
-        # The environment chart puts `environment` on every namespace it
-        # creates, so the rule reads "any namespace that is an environment",
-        # and a third environment needs no edit here. Opening it to all
-        # namespaces would have been one word shorter and would also let
-        # anything in the cluster publish itself through the front door.
+        # Which namespaces may attach a route to the shared gateway. Widened
+        # from the chart's default of this one, by the presence of a label
+        # rather than a list of names, so a third environment needs no edit
+        # here. Why not simply all namespaces is in docs/decisions.md.
         gateway:
           listeners:
             web:
