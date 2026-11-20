@@ -89,36 +89,12 @@ spec:
               location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.17.0/gatewayapi-plugin-linux-amd64"
               sha256: "1904ca787d33107c140521899d61fff030ee75d99908bd175fca5a4647759061"
 
-          # Raised from the chart's thirty seconds, for a reason that only
-          # exists because of the block above — and kept after the measurement
-          # that was supposed to justify it turned out to be the wrong
-          # measurement.
-          #
-          # The controller downloads that 77.7 MB executable before it answers
-          # anything, and again every time the pod is replaced. At the chart's
-          # defaults it has thirty seconds plus three twenty-second attempts
-          # before being killed as unhealthy, and a kill restarts the
-          # download, so a slow fetch produces a loop rather than a slow
-          # start.
-          #
-          # The number first written here was fifty-one seconds, measured on
-          # the connection of the machine this repository is edited from. That
-          # is not where the download happens. From inside the cluster it took
-          # **677 milliseconds**, so the chart's own thirty seconds was never
-          # close to being a problem under normal conditions.
-          #
-          # The wider window is kept anyway, for the case the first figure was
-          # groping at: this is a fetch from a public release host on the
-          # startup path of a component that will not start without it, and at
-          # one megabyte a second the same file needs seventy-seven seconds.
-          # The probe is sized for that fetch being slow, not for the process
-          # being slow.
-          #
-          # The accepted cost is that a controller which wedges during its
-          # first two and a half minutes is no longer caught here. That is the
-          # narrower risk: this probe exists to catch a running controller that
-          # has stopped responding, and startup is the one period when slow
-          # and stuck look identical from outside.
+          # Start window widened from the chart's thirty seconds. The
+          # controller fetches the plugin above before it answers anything,
+          # and a kill restarts that fetch, so too tight a window produces a
+          # restart loop rather than a slow start. Sized against a slow
+          # release host, not a slow process -- the measurements, and what the
+          # wider window gives up, are in docs/decisions.md.
           livenessProbe:
             httpGet:
               path: /healthz

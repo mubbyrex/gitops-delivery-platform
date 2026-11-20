@@ -1922,6 +1922,12 @@ the risk it guards is a slow release host rather than a slow process, but it is
 now sized against a stated risk instead of against a measurement of the wrong
 thing.
 
+What the wider window costs is that a controller which wedges inside its first
+two and a half minutes is no longer caught by this probe. That is the narrower
+risk of the two: the probe exists to catch a running controller that has
+stopped answering, and start-up is the one period in which slow and stuck look
+identical from outside.
+
 The fourth is that the plugin inherits the controller's permissions and the
 chart grants the routing API one verb less than the plugin's documentation
 asks for. The verb was added rather than left to be discovered during a release

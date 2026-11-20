@@ -117,25 +117,11 @@ spec:
             ruleSelectorNilUsesHelmValues: false
             scrapeConfigSelectorNilUsesHelmValues: false
 
-            # Twenty-four hours, set explicitly rather than inherited.
-            #
-            # The chart's default is ten days, and on this platform that is a
-            # claim it cannot keep. Nothing here asks for persistent storage --
-            # there is no volume claim and no volume claim template, so the
-            # database lives in a directory that belongs to the pod and dies
-            # with it. Ten days of retention over storage that does not survive
-            # a reschedule is a number that describes nothing.
-            #
-            # The real limit is the cluster's own lifecycle. This platform is
-            # torn down between sessions on purpose, so no measurement can
-            # outlive the cluster that recorded it. A day is about the longest
-            # window that is ever actually available, and saying so in the
-            # configuration is more honest than inheriting a default that
-            # implies durability nobody provides.
-            #
-            # It also bounds the one resource that grows on its own: the
-            # collector holds recent data in memory, and that figure follows
-            # how much it is keeping.
+            # A day, set explicitly against a chart default of ten. Storage
+            # here is an empty directory owned by the pod, so nothing survives
+            # a reschedule and a longer figure would describe nothing. It also
+            # bounds memory, which follows how much is being kept. Why the data
+            # is disposable at all is in docs/decisions.md.
             retention: 24h
             resources:
               requests:
