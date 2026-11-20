@@ -2615,3 +2615,52 @@ enforce that the descriptions beside them are still true. A directory whose
 purpose quietly changes passes every run. The guard catches the failure that
 actually happened and not the subtler one, and claiming otherwise would be the
 same mistake as the map it replaces.
+
+## Three images are committed, because the reader this is written for has no cluster
+
+Everything this platform demonstrates has until now been a number quoted in
+prose by the person asking to be believed. The withdrawal at 0.014 requests a
+second. The run that survived a synchronisation. The history a rename
+destroyed. All true, all measured, none of it verifiable by somebody reading
+the repository.
+
+That reader is the one this record exists for, and they do not run it. They have
+no cluster, they will not build one, and a dashboard they cannot open is not
+evidence to them — it is a claim that a dashboard exists.
+
+**Decision. Three images, committed under `docs/evidence/`, each dated, each
+naming what produced it, each referenced from the document that makes the
+claim.** A release measured from the traffic, the batch worker's indicators, and
+a withdrawn version's logs read after its pods were deleted.
+
+**Rejected: more of them.** A gallery ages faster, and every image is a file
+that cannot be diffed and will outlive the platform it shows. Three is the
+smallest set that covers the repository's actual argument: the two workloads are
+released differently, and the automatic withdrawal can now be explained.
+
+**Rejected: none, on the grounds that images are not configuration.** This was
+the repository's position by default for seven phases, and it is why its best
+findings were unverifiable by the people it is written for.
+
+**Rejected: installing a renderer to generate them.** It would make them
+reproducible, which is the one real argument for it, and it would also be a
+permanent component — a pinned chart and a pod running a headless browser —
+whose only purpose is making pictures of this platform's own dashboards. On a
+repository whose argument is that it installs less, that is the clearest
+possible instance of the thing being argued against. The images are captured by
+hand instead.
+
+**Accepted cost, and there are two.**
+
+They age and cannot be diffed. These show one particular afternoon, and when the
+configuration beside them changes they will quietly stop matching it. Nothing
+checks that. The mitigation is that each is dated and the set is small enough to
+retake, not that the problem is solved.
+
+The second is sharper. **This is the only rule in this repository that a search
+cannot enforce.** Every other claim about secrets — no account identifiers, no
+account-bearing ARNs, no cluster endpoints — is checked by a script before a
+commit. An image is opaque to that script, and a console screenshot is exactly
+where an account number or a cluster address would leave this repository. The
+check is a person looking at the picture, which is the weakest guarantee here
+and is stated plainly rather than implied to be stronger.

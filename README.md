@@ -34,6 +34,8 @@ released in weighted steps with an automated gate. The worker is released by
 replacement and must never run twice at once. The asymmetry is the point, and a
 platform that applies one strategy uniformly has misread at least one of them.
 
+![Two release paths: the API in weighted steps with a gate, the worker by replacement](docs/diagrams/release-paths.png)
+
 ---
 
 ## What is here
@@ -63,7 +65,18 @@ The first one is there because of something found by reading the service
 closely: a version that cannot stay up serves almost nothing and therefore
 *fails* almost nothing. **A gate built on error rate alone would promote a dead
 version on a perfect record.** That is not theoretical — it is demonstrated,
-and the numbers are in [`docs/decisions.md`](docs/decisions.md).
+the numbers are in [`docs/decisions.md`](docs/decisions.md).
+
+![A release in progress, with the traffic split measured per version](docs/evidence/release-progress.png)
+
+Above: a release of the API, read **from the traffic** rather than from the
+controller's status. Each version's pods carry a hash and the requests they
+answer are counted against it, so the share each version is serving is measured
+rather than asserted. The red lines are the gate's own thresholds.
+
+Two more images — the batch worker's indicators, and the logs of a version the
+gate withdrew, read after its pods had been deleted — are in
+[`docs/evidence/`](docs/evidence/).
 
 ---
 
@@ -79,6 +92,9 @@ Start here, in this order:
   alternative, what was rejected, and what the choice costs. Each entry carries
   an accepted cost, because a decision that appears to cost nothing was not one
 - [`docs/runbook.md`](docs/runbook.md) — what to do when something is wrong
+- [`docs/evidence/`](docs/evidence/) — three dated images from a running
+  platform: a release measured from the traffic, the batch worker's indicators,
+  and a withdrawn version's logs read after its pods were deleted
 - [`docs/structure.md`](docs/structure.md) — where everything is, and what
   each directory is for
 

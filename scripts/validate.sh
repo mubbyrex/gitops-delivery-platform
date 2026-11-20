@@ -174,6 +174,17 @@ else
   printf '%s\n' "$leaked" | sed 's/^/        /'
 fi
 
+# Images are the one thing this scan cannot do anything about, and saying so is
+# the point. An identifier shown in a screenshot is pixels, not bytes, so a
+# pattern search over the file reads clean whatever the picture contains. The
+# count is printed so that a passing run never implies these were checked.
+binaries=$(say_files | grep -cEi '\.(png|jpe?g|gif|webp|pdf|drawio)$' || true)
+if [ "${binaries:-0}" -gt 0 ]; then
+  printf '  \033[33mnote\033[0m  %s image or binary file(s) were NOT checked — a screenshot showing an
+' "$binaries"
+  printf '        account number or a cluster address reads clean to this scan. Look at them.\n'
+fi
+
 # The gitignored working directory is authored by hand and is one rename away
 # from being published, so it is scanned too, by the same rule.
 if [ -d "$REPO_ROOT/specs" ]; then
