@@ -15,11 +15,17 @@ sessions and these show one particular afternoon.
 
 ![A release in progress](release-progress.png)
 
-**Dashboard:** *payments-api — release progress*, `dev`, 16:00–17:00 local.
+**Dashboard:** *payments-api — release progress*, `dev`, captured **during** a
+release rather than after one.
 
-The green line is `dev-3`, the candidate. The yellow is `dev-2`, the version it
-replaced. Traffic crosses over at about 16:26 and the release completes at
-16:30.
+Two versions are serving at once. `dev-3` holds 70.3% and `dev-4` — the
+candidate, four minutes old — holds **29.7%**, against a weight the controller
+declared as 30%. Three pods: two on the trusted version, one on the version
+being tried.
+
+A canary costs one pod, not two. Any weight below 100% rounds a two-replica
+service to a single candidate, which is why the pod count reads three rather
+than four.
 
 **The point of this image is that the split is measured, not declared.** Each
 version's pods carry a hash; the requests they answer are counted against it.

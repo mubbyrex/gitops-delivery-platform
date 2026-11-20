@@ -67,10 +67,11 @@ closely: a version that cannot stay up serves almost nothing and therefore
 version on a perfect record.** That is not theoretical — it is demonstrated,
 the numbers are in [`docs/decisions.md`](docs/decisions.md).
 
-![A release in progress, with the traffic split measured per version](docs/evidence/release-progress.png)
+![Two versions of the API serving at once, with the traffic split measured per version](docs/evidence/release-progress.png)
 
-Above: a release of the API, read **from the traffic** rather than from the
-controller's status. Each version's pods carry a hash and the requests they
+Above: a release caught in progress. Two versions of the API are serving at
+once — the trusted one on 70.3% of requests, the candidate on 29.7% — and that
+split is read **from the traffic** rather than from the controller's status. Each version's pods carry a hash and the requests they
 answer are counted against it, so the share each version is serving is measured
 rather than asserted. The red lines are the gate's own thresholds.
 
