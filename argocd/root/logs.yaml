@@ -1,0 +1,128 @@
+# Where logs are kept.
+#
+# Single-node layout, local disk, one day of retention. Why logs exist at all,
+# and why this topology rather than the chart's default, is in
+# docs/decisions.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: logs
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # The community repository, not the one named after the vendor. That one
+    # still resolves and still serves a chart called loki -- a different
+    # product, at a lower version number.
+    repoURL: https://grafana-community.github.io/helm-charts
+    chart: loki
+    targetRevision: 21.4.2
+    helm:
+      values: |
+        # Named for the single-node layout, and not enough on its own: the
+        # replica counts below are what actually select it.
+        deploymentMode: Monolithic
+
+        singleBinary:
+          replicas: 1
+          persistence:
+            # No volume claim, matching the metrics database. A reschedule
+            # loses the logs, which is the stated posture rather than an
+            # oversight.
+            enabled: false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              # Logs land on the node's own disk. This bounds how much of it
+              # one bad day can take: the pod is evicted rather than the node
+              # running out of room for everything else.
+              ephemeral-storage: 2Gi
+
+        # The chart defaults these to three each, which is nine pods and
+        # requires object storage. Zero is what makes the line above apply.
+        backend:
+          replicas: 0
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+
+        # Each of these is a pod this platform does not need.
+        gateway:
+          enabled: false
+        lokiCanary:
+          enabled: false
+        test:
+          enabled: false
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+
+        loki:
+          # Single tenant. Nothing here separates one caller's logs from
+          # another's, because there is one caller.
+          auth_enabled: false
+          commonConfig:
+            replication_factor: 1
+          storage:
+            type: filesystem
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: loki_index_
+                  period: 24h
+          limits_config:
+            retention_period: 24h
+          compactor:
+            # Retention is only enforced if something enforces it. Without
+            # these two the period above is a declaration and nothing deletes.
+            retention_enabled: true
+            delete_request_store: filesystem
+          server:
+            http_listen_port: 3100
+
+        # Grafana's sidecar loads any config map in any namespace carrying this
+        # label, which is how the dashboards arrive too. Shipped from here so
+        # that the thing storing logs is also the thing that says how to reach
+        # them.
+        extraObjects:
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: logs-datasource
+              labels:
+                grafana_datasource: "1"
+            data:
+              logs-datasource.yaml: |
+                apiVersion: 1
+                datasources:
+                  - name: Logs
+                    uid: logs
+                    type: loki
+                    access: proxy
+                    url: http://logs-loki.metrics.svc.cluster.local:3100
+                    isDefault: false
+                    jsonData:
+                      maxLines: 1000
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metrics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

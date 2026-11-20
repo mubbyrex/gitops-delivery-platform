@@ -1,0 +1,118 @@
+# What reads the logs and ships them.
+#
+# One pod per node, tailing the container log files on that node. Wave one, so
+# the store it pushes to already exists.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: logs-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: 1.16.0
+    helm:
+      values: |
+        controller:
+          # One per node, stated rather than inherited: a log file is only
+          # readable from the node holding it.
+          type: daemonset
+
+        alloy:
+          mounts:
+            # Off by default, and nothing works without it.
+            varlog: true
+
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+
+          configMap:
+            content: |
+              // Every pod in the cluster. Only the ones on this node have
+              // files here, and the file match below is what drops the rest.
+              discovery.kubernetes "pods" {
+                role = "pod"
+              }
+
+              discovery.relabel "pod_logs" {
+                targets = discovery.kubernetes.pods.targets
+
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label  = "namespace"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_name"]
+                  target_label  = "pod"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label  = "container"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+                  target_label  = "service"
+                }
+
+                // The release controller adds this to every candidate pod, so
+                // a query can separate the version under test from the stable
+                // one. Empty for anything not being released.
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_label_rollouts_pod_template_hash"]
+                  target_label  = "version"
+                }
+
+                // The path a container's log actually has on the node. The
+                // leading star stands in for the namespace and pod name that
+                // prefix the directory.
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+                  separator     = "/"
+                  action        = "replace"
+                  replacement   = "/var/log/pods/*$1/*.log"
+                  target_label  = "__path__"
+                }
+              }
+
+              local.file_match "pod_logs" {
+                path_targets = discovery.relabel.pod_logs.output
+              }
+
+              loki.source.file "pod_logs" {
+                targets    = local.file_match.pod_logs.targets
+                forward_to = [loki.process.unwrap.receiver]
+              }
+
+              // The runtime wraps each line with its own timestamp and stream
+              // name. Without this stage every entry is that wrapper rather
+              // than what the service wrote.
+              loki.process "unwrap" {
+                stage.cri {}
+                forward_to = [loki.write.store.receiver]
+              }
+
+              loki.write "store" {
+                endpoint {
+                  url = "http://logs-loki.metrics.svc.cluster.local:3100/loki/api/v1/push"
+                }
+              }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metrics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

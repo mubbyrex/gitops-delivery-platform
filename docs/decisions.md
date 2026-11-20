@@ -2331,3 +2331,80 @@ by a comment in a chart and a paragraph in the architecture document, rather
 than by a mechanism. For a reference platform that is the right trade. For a
 production system it would not be, and the difference is worth stating because
 a reader may be running one.
+
+## Logs are collected, because the one failure this platform automates destroys its own evidence
+
+Metrics have answered *whether* something is wrong since they were added. They
+cannot answer *what*, and *what* is the first question anyone asks about a
+release that was withdrawn while nobody was watching.
+
+**Why this needed an argument rather than an installation.** The last time this
+platform was asked where a fact should come from, the textbook answer was to
+install something and the right answer was that the cluster already knew. The
+batch worker's health is read from the cluster's record of its finished runs,
+not from a push intermediary, because the facts already existed there. Reaching
+for a component is the move this platform is supposed to resist, so the
+question was asked again: does the cluster already know why something failed?
+
+**For a failed batch run, largely yes.** The run's pod is kept under the history
+limits, so its output can be read after it finishes. Bounded, and the bound
+matters — the history expires with successive runs, and removing or renaming the
+workload destroys all of it at once.
+
+**For a withdrawn release, no.** When the gate abandons a release, the
+controller scales the candidate to zero and the pod is deleted; measured
+cleanup was 48 seconds after the abort. The output goes with the pod. So the
+single failure this entire platform is built around — a bad version caught and
+withdrawn automatically, with nobody present — is the one where afterwards
+there is nothing to read. The numbers from two such aborts survive only because
+they were copied into this file by hand at the time.
+
+**Decision. A store and a collector, four pods, with the same posture as the
+metrics stack: one replica, local storage, retention set explicitly to a day,
+and declared disposable.** Queried through the Grafana that already exists, as
+a second data source, so there is no second console and no new way in.
+
+**Rejected: no collector, read the previous container's output.** The honest
+minimum, and it fails on exactly the case above. Named rather than skipped,
+because "the cluster already knows" was the correct answer once and the
+difference between then and now is the whole reason this entry exists.
+
+**Rejected: Promtail.** The name most people know, and superseded. Its chart
+pins a version of the store two minor releases behind the one being installed,
+and the collector Grafana now develops is the other one.
+
+**Rejected: the bundled stack chart.** It brings its own Grafana and its own
+metrics collector. This platform has both, so it would install a second console
+to avoid writing one values file.
+
+**Rejected: object storage for the store.** A bucket, a lifecycle policy and a
+pod identity, for data already established as disposable — nothing here claims
+persistent storage, so a reschedule loses it before a teardown could. Logs get
+the same day of retention as the measurements and the same explicit statement
+that losing them costs nothing.
+
+**Rejected: the scalable topology, which is what the chart actually defaults
+to.** Its default deployment mode is named for the single-node layout, but its
+default replica counts deploy nine pods across three scalable roles and then
+refuse to render at all without object storage. The single-node layout has to
+be asked for explicitly, in four places, against a default that claims to be it
+already.
+
+**Accepted cost.**
+
+Four more pods on a three-node cluster, taking the fullest node from three free
+slots to two. That is enough to still absorb a release candidate landing there,
+and it is the whole margin.
+
+A day of retention means the evidence for anything older than a day is gone,
+including the evidence for a failure nobody looked at over a weekend. The
+alternative was a bucket and an identity for a platform that is parked most of
+the time.
+
+And the component is only as good as the race it is in. A line reaches the
+store if the collector read it before the pod was deleted. For a withdrawn
+release that window is the 48 seconds between the abort and the cleanup, which
+is wide — but it is a window rather than a guarantee, and a pod that dies
+faster than its last lines are shipped loses them. Whether it holds was
+measured rather than assumed, and the measurement is recorded with the gate's
+other results.
