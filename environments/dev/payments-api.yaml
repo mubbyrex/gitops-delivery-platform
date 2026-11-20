@@ -14,7 +14,7 @@ replicaCount: 2
 # so the weight at each step can be read from outside the cluster by counting
 # which version answered, rather than taken on trust from the controller's own
 # status.
-version: "dev-3"
+version: "dev-4"
 
 image:
   # Written by the build pipeline, which commits it here and nowhere else.
